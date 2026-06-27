@@ -60,7 +60,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     <AuthContext.Provider
       value={{ user, loading, signInWithGoogle, signInWithEmail, signUpWithEmail, signOut }}
     >
-      {children}
+      {loading ? (
+        <div className="fixed inset-0 bg-bg flex flex-col items-center justify-center z-50 gap-4">
+          {/* Inline spinner — avoids import during provider bootstrap */}
+          <svg
+            width={36}
+            height={36}
+            viewBox="0 0 24 24"
+            fill="none"
+            className="animate-spin text-accent"
+          >
+            <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeOpacity="0.2" />
+            <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+          </svg>
+          <p className="text-muted text-sm tracking-wide">Starting JustiBot…</p>
+        </div>
+      ) : (
+        children
+      )}
     </AuthContext.Provider>
   )
 }

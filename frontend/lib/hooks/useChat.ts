@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { v4 as uuidv4 } from 'uuid'
 import type { Message } from '@/types'
@@ -19,31 +19,42 @@ export function useChat(sessionId: string): UseChatReturn {
   const [messages, setMessages] = useState<Message[]>([])
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [currentSessionId] = useState(() =>
+
+  // Keep the generated session ID stable across re-renders
+  const sessionIdRef = useRef<string>(
     sessionId === 'new' ? uuidv4() : sessionId
   )
-  const router = useRouter()
-  const isNew = sessionId === 'new'
 
+  const router = useRouter()
+
+  // When navigating to an existing session, load its messages
   const loadMessages = useCallback(async (sid: string) => {
     if (sid === 'new') return
+    setIsLoading(true)
     try {
       const { messages: loaded } = await api.getSessionMessages(sid)
       setMessages(loaded)
     } catch {
-      // non-fatal — user may have no messages yet
+      // non-fatal — session may have no messages yet (404)
+    } finally {
+      setIsLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    if (!isNew) {
+    if (sessionId !== 'new') {
+      sessionIdRef.current = sessionId
+      setMessages([])          // clear stale messages before loading new session
       loadMessages(sessionId)
     }
-  }, [sessionId, isNew, loadMessages])
+  }, [sessionId, loadMessages])
 
   const sendMessage = useCallback(
     async (query: string, categoryFilter?: string | null) => {
       setError(null)
+
+      const currentSessionId = sessionIdRef.current
+      const isNew = sessionId === 'new'
 
       // Optimistic user message
       const optimisticMsg: Message = {
@@ -84,6 +95,8 @@ export function useChat(sessionId: string): UseChatReturn {
         setMessages((prev) => [...prev, assistantMsg])
 
         // Navigate from /new to real session route after first message
+        // NOTE: We use push, not replace, so that the message state is
+        // preserved during the brief re-render caused by navigation.
         if (isNew) {
           router.replace(`/chat/${currentSessionId}`)
         }
@@ -95,8 +108,15 @@ export function useChat(sessionId: string): UseChatReturn {
         setIsLoading(false)
       }
     },
-    [messages, currentSessionId, isNew, router]
+    [messages, sessionId, router]
   )
 
-  return { messages, isLoading, error, sendMessage, loadMessages, currentSessionId }
+  return {
+    messages,
+    isLoading,
+    error,
+    sendMessage,
+    loadMessages,
+    currentSessionId: sessionIdRef.current,
+  }
 }

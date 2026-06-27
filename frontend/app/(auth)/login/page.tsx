@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { Scale, Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '@/lib/hooks/useAuth'
+import { Spinner } from '@/components/ui/Loader'
 
 const ERROR_MAP: Record<string, string> = {
   'auth/invalid-credential': 'Invalid email or password.',
@@ -24,6 +25,8 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
+  const [redirecting, setRedirecting] = useState(false)
 
   const handleEmailLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -31,6 +34,7 @@ export default function LoginPage() {
     setLoading(true)
     try {
       await signInWithEmail(email, password)
+      setRedirecting(true)
     } catch (err: unknown) {
       const code = (err as { code?: string }).code ?? ''
       setError(getErrorMessage(code))
@@ -41,12 +45,24 @@ export default function LoginPage() {
 
   const handleGoogle = async () => {
     setError('')
+    setGoogleLoading(true)
     try {
       await signInWithGoogle()
+      setRedirecting(true)
     } catch (err: unknown) {
       const code = (err as { code?: string }).code ?? ''
       setError(getErrorMessage(code))
+      setGoogleLoading(false)
     }
+  }
+
+  if (redirecting) {
+    return (
+      <div className="min-h-screen bg-bg flex flex-col items-center justify-center gap-4">
+        <Spinner size={32} />
+        <p className="text-muted text-sm">Signing you in…</p>
+      </div>
+    )
   }
 
   return (
@@ -64,10 +80,15 @@ export default function LoginPage() {
           {/* Google */}
           <button
             onClick={handleGoogle}
-            className="w-full flex items-center justify-center gap-2 border border-border rounded-lg py-2.5 text-sm font-medium hover:bg-bg transition-colors mb-4"
+            disabled={googleLoading || loading}
+            className="w-full flex items-center justify-center gap-2 border border-border rounded-lg py-2.5 text-sm font-medium hover:bg-bg transition-colors mb-4 disabled:opacity-60"
           >
-            <span className="font-bold text-blue-500">G</span>
-            Continue with Google
+            {googleLoading ? (
+              <Spinner size={16} />
+            ) : (
+              <span className="font-bold text-blue-500">G</span>
+            )}
+            {googleLoading ? 'Connecting…' : 'Continue with Google'}
           </button>
 
           <div className="flex items-center gap-3 mb-4">
@@ -83,7 +104,8 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-3 py-2.5 rounded-lg border border-border bg-bg text-text text-sm placeholder:text-muted focus:outline-none focus:border-accent transition-colors"
+              disabled={loading || googleLoading}
+              className="w-full px-3 py-2.5 rounded-lg border border-border bg-bg text-text text-sm placeholder:text-muted focus:outline-none focus:border-accent transition-colors disabled:opacity-60"
             />
 
             <div className="relative">
@@ -93,7 +115,8 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="w-full px-3 py-2.5 rounded-lg border border-border bg-bg text-text text-sm placeholder:text-muted focus:outline-none focus:border-accent transition-colors pr-10"
+                disabled={loading || googleLoading}
+                className="w-full px-3 py-2.5 rounded-lg border border-border bg-bg text-text text-sm placeholder:text-muted focus:outline-none focus:border-accent transition-colors pr-10 disabled:opacity-60"
               />
               <button
                 type="button"
@@ -105,15 +128,17 @@ export default function LoginPage() {
             </div>
 
             {error && (
-              <p className="text-xs text-danger">{error}</p>
+              <p className="text-xs text-danger bg-danger/10 border border-danger/20 rounded-lg px-3 py-2">
+                {error}
+              </p>
             )}
 
             <button
               type="submit"
-              disabled={loading}
-              className="w-full py-2.5 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
+              disabled={loading || googleLoading}
+              className="w-full py-2.5 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
             >
-              {loading ? 'Signing in...' : 'Sign In'}
+              {loading ? <><Spinner size={16} /> Signing in…</> : 'Sign In'}
             </button>
           </form>
         </div>

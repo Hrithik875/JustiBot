@@ -4,14 +4,15 @@ import { useEffect, useRef, useState } from 'react'
 import { Scale } from 'lucide-react'
 import { useChat } from '@/lib/hooks/useChat'
 import { useSessions } from '@/lib/hooks/useSessions'
-import { MessageBubble, TypingIndicator } from '@/components/chat/MessageBubble'
+import { MessageBubble } from '@/components/chat/MessageBubble'
 import { InputBar } from '@/components/chat/InputBar'
 import { SessionTitle } from '@/components/chat/SessionTitle'
+import { Spinner } from '@/components/ui/Loader'
 
 const SUGGESTIONS = [
   "What should I do if I'm scammed online?",
   "How do I file an RTI application?",
-  "What are my rights if I'm arrested?"
+  "What are my rights if I'm arrested?",
 ]
 
 export default function ChatSessionPage({
@@ -26,10 +27,22 @@ export default function ChatSessionPage({
   const isNew = sessionId === 'new'
 
   const [categoryFilter, setCategoryFilter] = useState<string>('all')
+  const [historyLoading, setHistoryLoading] = useState(!isNew)
 
   // Find the initial title if it exists
   const currentSession = sessions.find((s) => s.sessionId === sessionId)
   const initialTitle = currentSession?.title || (isNew ? 'New Chat' : 'Untitled')
+
+  // Mark history as loaded once messages are fetched for existing sessions
+  useEffect(() => {
+    if (!isNew) {
+      // Short timeout to let message loading settle
+      const t = setTimeout(() => setHistoryLoading(false), 600)
+      return () => clearTimeout(t)
+    } else {
+      setHistoryLoading(false)
+    }
+  }, [isNew, sessionId])
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -41,18 +54,33 @@ export default function ChatSessionPage({
     sendMessage(query, categoryFilter === 'all' ? null : categoryFilter)
   }
 
-  const showEmptyState = isNew && messages.length === 0
+  const handleSuggestion = (sug: string) => {
+    handleSend(sug)
+  }
+
+  const showEmptyState = isNew && messages.length === 0 && !isLoading
+
+  if (historyLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center bg-bg h-full">
+        <div className="flex flex-col items-center gap-3">
+          <Spinner size={28} />
+          <p className="text-muted text-sm">Loading conversation…</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col h-full bg-bg">
-      {/* ── Top Bar ─────────────────────────────────────────────── */}
-      <div className="h-14 border-b border-border bg-surface/50 backdrop-blur-sm shrink-0 flex items-center justify-between px-4 sm:px-6 z-10 hidden md:flex">
+      {/* ── Top Bar (desktop) ─────────────────────────────────────── */}
+      <div className="h-14 border-b border-border bg-surface/50 shrink-0 items-center justify-between px-4 sm:px-6 z-10 hidden md:flex">
         <SessionTitle
           sessionId={sessionId}
           initialTitle={initialTitle}
           isNewSession={isNew}
         />
-        
+
         <select
           value={categoryFilter}
           onChange={(e) => setCategoryFilter(e.target.value)}
@@ -68,9 +96,9 @@ export default function ChatSessionPage({
         </select>
       </div>
 
-      {/* For mobile, we just put the filter and title under the header since header is in layout */}
-      <div className="md:hidden p-2 flex items-center justify-between border-b border-border bg-surface">
-         <SessionTitle
+      {/* ── Top Bar (mobile) ──────────────────────────────────────── */}
+      <div className="md:hidden p-2 flex items-center justify-between border-b border-border bg-surface shrink-0">
+        <SessionTitle
           sessionId={sessionId}
           initialTitle={initialTitle}
           isNewSession={isNew}
@@ -90,21 +118,29 @@ export default function ChatSessionPage({
         </select>
       </div>
 
-      {/* ── Chat Area ───────────────────────────────────────────── */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 scroll-smooth">
+      {/* ── Chat Area ─────────────────────────────────────────────── */}
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 scroll-smooth"
+      >
         {showEmptyState ? (
+          /* Empty state with suggestions */
           <div className="h-full flex flex-col items-center justify-center max-w-2xl mx-auto">
-            <div className="w-16 h-16 rounded-2xl bg-surface border border-border flex items-center justify-center mb-6 shadow-sm">
+            <div className="w-16 h-16 rounded-2xl bg-surface border border-border flex items-center justify-center mb-6">
               <Scale size={32} className="text-accent" />
             </div>
-            <h2 className="text-2xl font-bold mb-8">How can I help you today?</h2>
-            
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 w-full">
+            <h2 className="text-2xl font-bold mb-2">How can I help you today?</h2>
+            <p className="text-muted text-sm mb-8">
+              Ask anything about Indian law — rights, procedures, helplines.
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full">
               {SUGGESTIONS.map((sug, i) => (
                 <button
                   key={i}
-                  onClick={() => handleSend(sug)}
-                  className="p-4 rounded-xl border border-border bg-surface text-sm text-left hover:border-accent hover:text-accent transition-colors shadow-sm"
+                  onClick={() => handleSuggestion(sug)}
+                  disabled={isLoading}
+                  className="p-4 rounded-xl border border-border bg-surface text-sm text-left hover:border-accent hover:text-accent transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {sug}
                 </button>
@@ -112,6 +148,7 @@ export default function ChatSessionPage({
             </div>
           </div>
         ) : (
+          /* Message list */
           <div className="max-w-4xl mx-auto flex flex-col pb-4">
             {messages.map((msg, i) => (
               <MessageBubble
@@ -120,15 +157,16 @@ export default function ChatSessionPage({
                 isLatest={i === messages.length - 1}
               />
             ))}
-            
+
             {isLoading && (
               <div className="flex justify-start mb-6">
-                <div className="max-w-[85%] px-2">
-                  <TypingIndicator />
+                <div className="flex items-center gap-2 px-2">
+                  <Spinner size={16} />
+                  <span className="text-muted text-sm">JustiBot is thinking…</span>
                 </div>
               </div>
             )}
-            
+
             {error && (
               <div className="p-3 my-4 bg-danger/10 border border-danger/20 rounded-lg text-danger text-sm text-center">
                 {error}
@@ -138,11 +176,15 @@ export default function ChatSessionPage({
         )}
       </div>
 
-      {/* ── Input Area ──────────────────────────────────────────── */}
-      <div className="shrink-0 p-4 bg-bg border-t border-transparent bg-gradient-to-t from-bg via-bg to-transparent">
-        <InputBar onSend={handleSend} disabled={isLoading} isLoading={isLoading} />
+      {/* ── Input Area ────────────────────────────────────────────── */}
+      <div className="shrink-0 p-4 border-t border-border bg-bg">
+        <InputBar
+          onSend={handleSend}
+          disabled={isLoading}
+          isLoading={isLoading}
+        />
         <p className="text-center text-[10px] text-muted mt-2">
-          JustiBot can make mistakes. Verify important information.
+          JustiBot can make mistakes. Verify important information with a qualified lawyer.
         </p>
       </div>
     </div>

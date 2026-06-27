@@ -4,6 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { Scale, Eye, EyeOff } from 'lucide-react'
 import { useAuth } from '@/lib/hooks/useAuth'
+import { Spinner } from '@/components/ui/Loader'
 
 export default function SignupPage() {
   const { signUpWithEmail, signInWithGoogle } = useAuth()
@@ -13,6 +14,8 @@ export default function SignupPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  const [googleLoading, setGoogleLoading] = useState(false)
+  const [redirecting, setRedirecting] = useState(false)
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -30,6 +33,7 @@ export default function SignupPage() {
     setLoading(true)
     try {
       await signUpWithEmail(email, password)
+      setRedirecting(true)
     } catch (err: unknown) {
       const code = (err as { code?: string }).code ?? ''
       const map: Record<string, string> = {
@@ -45,11 +49,23 @@ export default function SignupPage() {
 
   const handleGoogle = async () => {
     setError('')
+    setGoogleLoading(true)
     try {
       await signInWithGoogle()
+      setRedirecting(true)
     } catch {
       setError('Google sign-in failed. Please try again.')
+      setGoogleLoading(false)
     }
+  }
+
+  if (redirecting) {
+    return (
+      <div className="min-h-screen bg-bg flex flex-col items-center justify-center gap-4">
+        <Spinner size={32} />
+        <p className="text-muted text-sm">Creating your account…</p>
+      </div>
+    )
   }
 
   return (
@@ -65,10 +81,15 @@ export default function SignupPage() {
 
           <button
             onClick={handleGoogle}
-            className="w-full flex items-center justify-center gap-2 border border-border rounded-lg py-2.5 text-sm font-medium hover:bg-bg transition-colors mb-4"
+            disabled={googleLoading || loading}
+            className="w-full flex items-center justify-center gap-2 border border-border rounded-lg py-2.5 text-sm font-medium hover:bg-bg transition-colors mb-4 disabled:opacity-60"
           >
-            <span className="font-bold text-blue-500">G</span>
-            Continue with Google
+            {googleLoading ? (
+              <Spinner size={16} />
+            ) : (
+              <span className="font-bold text-blue-500">G</span>
+            )}
+            {googleLoading ? 'Connecting…' : 'Continue with Google'}
           </button>
 
           <div className="flex items-center gap-3 mb-4">
@@ -84,7 +105,8 @@ export default function SignupPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               required
-              className="w-full px-3 py-2.5 rounded-lg border border-border bg-bg text-text text-sm placeholder:text-muted focus:outline-none focus:border-accent transition-colors"
+              disabled={loading || googleLoading}
+              className="w-full px-3 py-2.5 rounded-lg border border-border bg-bg text-text text-sm placeholder:text-muted focus:outline-none focus:border-accent transition-colors disabled:opacity-60"
             />
 
             <div className="relative">
@@ -94,7 +116,8 @@ export default function SignupPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="w-full px-3 py-2.5 rounded-lg border border-border bg-bg text-text text-sm placeholder:text-muted focus:outline-none focus:border-accent transition-colors pr-10"
+                disabled={loading || googleLoading}
+                className="w-full px-3 py-2.5 rounded-lg border border-border bg-bg text-text text-sm placeholder:text-muted focus:outline-none focus:border-accent transition-colors pr-10 disabled:opacity-60"
               />
               <button
                 type="button"
@@ -111,17 +134,22 @@ export default function SignupPage() {
               value={confirm}
               onChange={(e) => setConfirm(e.target.value)}
               required
-              className="w-full px-3 py-2.5 rounded-lg border border-border bg-bg text-text text-sm placeholder:text-muted focus:outline-none focus:border-accent transition-colors"
+              disabled={loading || googleLoading}
+              className="w-full px-3 py-2.5 rounded-lg border border-border bg-bg text-text text-sm placeholder:text-muted focus:outline-none focus:border-accent transition-colors disabled:opacity-60"
             />
 
-            {error && <p className="text-xs text-danger">{error}</p>}
+            {error && (
+              <p className="text-xs text-danger bg-danger/10 border border-danger/20 rounded-lg px-3 py-2">
+                {error}
+              </p>
+            )}
 
             <button
               type="submit"
-              disabled={loading}
-              className="w-full py-2.5 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
+              disabled={loading || googleLoading}
+              className="w-full py-2.5 bg-accent text-white rounded-lg text-sm font-medium hover:bg-accent-hover transition-colors disabled:opacity-60 flex items-center justify-center gap-2"
             >
-              {loading ? 'Creating account...' : 'Create Account'}
+              {loading ? <><Spinner size={16} /> Creating account…</> : 'Create Account'}
             </button>
           </form>
         </div>

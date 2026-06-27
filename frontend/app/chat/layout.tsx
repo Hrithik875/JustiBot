@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import { Menu, X } from 'lucide-react'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { Sidebar } from '@/components/chat/Sidebar'
+import { Spinner } from '@/components/ui/Loader'
 
 export default function ChatLayout({
   children,
@@ -29,8 +30,11 @@ export default function ChatLayout({
 
   if (loading || !user) {
     return (
-      <div className="min-h-screen bg-bg flex items-center justify-center">
-        <span className="w-6 h-6 border-2 border-accent border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen bg-bg flex flex-col items-center justify-center gap-4">
+        <Spinner size={32} />
+        <p className="text-muted text-sm">
+          {loading ? 'Verifying your session…' : 'Redirecting to login…'}
+        </p>
       </div>
     )
   }
@@ -63,7 +67,7 @@ export default function ChatLayout({
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Mobile top bar just for the hamburger */}
+        {/* Mobile top bar */}
         <div className="md:hidden h-14 border-b border-border bg-surface flex items-center px-4 shrink-0">
           <button
             onClick={() => setMobileOpen(true)}
@@ -74,9 +78,7 @@ export default function ChatLayout({
           <div className="flex-1 text-center font-bold text-sm">JustiBot</div>
         </div>
 
-        <div className="flex-1 relative overflow-hidden">
-          {children}
-        </div>
+        <div className="flex-1 relative overflow-hidden">{children}</div>
       </div>
     </div>
   )
