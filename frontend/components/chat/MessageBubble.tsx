@@ -19,6 +19,8 @@ interface MessageBubbleProps {
  * - bare URLs
  */
 function renderMarkdown(text: string): React.ReactNode[] {
+  if (!text) return []
+
   const lines = text.split('\n')
   const result: React.ReactNode[] = []
   let i = 0

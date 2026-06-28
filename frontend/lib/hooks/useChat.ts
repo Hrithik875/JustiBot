@@ -20,22 +20,26 @@ export function useChat(sessionId: string): UseChatReturn {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Keep the generated session ID stable across re-renders
   const sessionIdRef = useRef<string>(
     sessionId === 'new' ? uuidv4() : sessionId
   )
 
+  const hasInMemoryMessages = useRef(false)
+
   const router = useRouter()
 
-  // When navigating to an existing session, load its messages
   const loadMessages = useCallback(async (sid: string) => {
     if (sid === 'new') return
+    if (hasInMemoryMessages.current) return
+
     setIsLoading(true)
     try {
       const { messages: loaded } = await api.getSessionMessages(sid)
-      setMessages(loaded)
+      if (!hasInMemoryMessages.current) {
+        setMessages(loaded)
+      }
     } catch {
-      // non-fatal — session may have no messages yet (404)
+      // non-fatal
     } finally {
       setIsLoading(false)
     }
@@ -44,71 +48,108 @@ export function useChat(sessionId: string): UseChatReturn {
   useEffect(() => {
     if (sessionId !== 'new') {
       sessionIdRef.current = sessionId
-      setMessages([])          // clear stale messages before loading new session
+      if (!hasInMemoryMessages.current) {
+        setMessages([])
+        loadMessages(sessionId)
+      }
+    } else {
+      hasInMemoryMessages.current = false
+      sessionIdRef.current = uuidv4()
+      setMessages([])
+    }
+  }, [sessionId, loadMessages])
+
+  useEffect(() => {
+    if (
+      sessionId !== 'new' &&
+      sessionId !== sessionIdRef.current
+    ) {
+      hasInMemoryMessages.current = false
+      sessionIdRef.current = sessionId
+      setMessages([])
       loadMessages(sessionId)
     }
   }, [sessionId, loadMessages])
 
+  // ─── THIS IS THE FIX ───────────────────────────────────────────
+  // sendMessage no longer has 'messages' in its dependency array.
+  // History and user message are both captured inside functional
+  // state updaters, guaranteeing we always read current state —
+  // never a stale closure value.
+  // The assistantMsg is built inside the setMessages updater so
+  // response.answer is always the value from THIS call, not a
+  // previous one.
+  // ───────────────────────────────────────────────────────────────
   const sendMessage = useCallback(
     async (query: string, categoryFilter?: string | null) => {
       setError(null)
-
       const currentSessionId = sessionIdRef.current
       const isNew = sessionId === 'new'
 
-      // Optimistic user message
-      const optimisticMsg: Message = {
-        id: `tmp-${Date.now()}`,
-        role: 'user',
-        content: query,
-        sources: [],
-        cached: false,
-        createdAt: new Date().toISOString(),
-      }
-      setMessages((prev) => [...prev, optimisticMsg])
-      setIsLoading(true)
+      // Capture history and add user message in a single
+      // synchronous state update — no stale closure risk
+      let capturedHistory: { role: string; content: string }[] = []
+      let isFirstMessage = false
 
-      // Build conversation history from current messages (last 6)
-      const history = messages
-        .slice(-6)
-        .map((m) => ({ role: m.role, content: m.content }))
+      setMessages((prev) => {
+        capturedHistory = prev
+          .slice(-6)
+          .map((m) => ({ role: m.role, content: m.content }))
+        isFirstMessage = prev.length === 0
+
+        const userMsg: Message = {
+          id: `user-${Date.now()}`,
+          role: 'user',
+          content: query,
+          sources: [],
+          cached: false,
+          createdAt: new Date().toISOString(),
+        }
+        return [...prev, userMsg]
+      })
+
+      setIsLoading(true)
 
       try {
         const response = await api.sendMessage({
           query,
           sessionId: currentSessionId,
-          isNewSession: isNew && messages.length === 0,
-          conversationHistory: history,
+          isNewSession: isNew && isFirstMessage,
+          conversationHistory: capturedHistory,
           categoryFilter: categoryFilter ?? null,
         })
 
-        const assistantMsg: Message = {
-          id: `ai-${Date.now()}`,
-          role: 'assistant',
-          content: response.answer,
-          sources: response.sources,
-          cached: response.cached,
-          semanticCache: response.semanticCache,
-          createdAt: new Date().toISOString(),
-        }
+        // Build and append assistant message inside functional updater
+        // response is a local variable — always correct for this call
+        setMessages((prev) => {
+          const assistantMsg: Message = {
+            id: `ai-${Date.now()}`,
+            role: 'assistant',
+            content: response.answer,
+            sources: response.sources,
+            cached: response.cached,
+            semanticCache: response.semanticCache,
+            createdAt: new Date().toISOString(),
+          }
+          return [...prev, assistantMsg]
+        })
 
-        setMessages((prev) => [...prev, assistantMsg])
+        hasInMemoryMessages.current = true
 
-        // Navigate from /new to real session route after first message
-        // NOTE: We use push, not replace, so that the message state is
-        // preserved during the brief re-render caused by navigation.
         if (isNew) {
           router.replace(`/chat/${currentSessionId}`)
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Something went wrong')
-        // Remove optimistic message on failure
-        setMessages((prev) => prev.filter((m) => m.id !== optimisticMsg.id))
+        // Remove the user message we added on failure
+        setMessages((prev) => prev.slice(0, -1))
       } finally {
         setIsLoading(false)
       }
     },
-    [messages, sessionId, router]
+    // 'messages' intentionally removed from deps —
+    // state is read via functional updater instead
+    [sessionId, router]
   )
 
   return {
