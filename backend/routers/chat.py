@@ -2,6 +2,7 @@
 Chat endpoints for JustiBot API.
 Full RAG pipeline with Redis caching, semantic cache, and Firestore persistence.
 """
+import asyncio
 import logging
 import re
 
@@ -26,7 +27,7 @@ redis = RedisService()
 groq_svc = GroqService()
 firestore_svc = FirestoreService()
 
-
+MIN_ANSWER_LENGTH = 100
 # ── Utilities ─────────────────────────────────────────────────────────────────
 
 def format_response_links(text: str) -> str:
@@ -42,14 +43,14 @@ def format_response_links(text: str) -> str:
     email_pattern = r'([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})'
     text = re.sub(email_pattern, r'[\1](mailto:\1)', text)
 
-    # Highlight Indian helpline numbers
+    # Highlight Indian helpline numbers with backtick formatting
     helpline_pattern = r'\b(1930|100|1091|1915|15100|14567|112)\b'
-    text = re.sub(helpline_pattern, r'**`\1`**', text)
+    text = re.sub(helpline_pattern, r'`\1`', text)
 
     return text
 
 
-# ── Request models ─────────────────────────────────────────────────────────────
+# ── Request models ────────────────────────────────────────────────────────────
 
 class ChatRequest(BaseModel):
     """Request body for the /chat endpoint."""
@@ -87,6 +88,10 @@ async def chat(
       6.5. Firestore persistence (non-fatal)
       7. Return response
     """
+    # Minimum delay between Groq calls to prevent empty responses
+    # on consecutive requests (free tier behavior with 70b model)
+    await asyncio.sleep(4)
+
     # STEP 1 — Validate and sanitize input
     clean_query = validate_query(request.query)
     user_uid = token["uid"]
@@ -100,7 +105,8 @@ async def chat(
         cached["user_uid"] = user_uid
         return cached
 
-    # STEP 2B — Semantic cache check (also produces the embedding for STEP 4)
+    # STEP 2B — Semantic cache check
+    # Also produces the embedding reused in STEP 4
     query_embedding = embedder.embed_query(clean_query)
     semantic_match = await redis.find_semantic_match(query_embedding)
     if semantic_match:
@@ -110,13 +116,13 @@ async def chat(
         semantic_match["user_uid"] = user_uid
         return semantic_match
 
-    # STEP 3 — Embedding already computed in STEP 2B; skip re-embedding
+    # STEP 3 — Embedding already computed in STEP 2B
 
     # STEP 4 — Search Qdrant
     context_chunks = qdrant.search(
         query_embedding=query_embedding,
         category_filter=request.category_filter,
-        limit=5,
+        limit=3,
     )
 
     # STEP 5 — Generate response via Groq
@@ -126,23 +132,36 @@ async def chat(
         conversation_history=request.conversation_history,
     )
 
-    # Apply response formatting
+    # Apply response link formatting
     formatted_answer = format_response_links(result["answer"])
 
-    # STEP 6 — Cache the result (exact + semantic)
-    response_to_cache = {
-        "answer": formatted_answer,
-        "sources": result["sources"],
-        "model": result["model"],
-        "context_chunks_used": result["context_chunks_used"],
-        "cached": False,
-    }
-    await redis.set_cached(cache_key, response_to_cache)
-    await redis.store_semantic_key(
-        query=clean_query,
-        embedding=query_embedding,
-        cache_key=cache_key,
-    )
+    # STEP 6 — Cache the result
+    # Only cache non-empty answers — never cache empty responses
+    if formatted_answer and len(formatted_answer.strip()) >= MIN_ANSWER_LENGTH:
+        response_to_cache = {
+            "answer": formatted_answer,
+            "sources": result["sources"],
+            "model": result["model"],
+            "context_chunks_used": result["context_chunks_used"],
+            "cached": False,
+        }
+        await redis.set_cached(cache_key, response_to_cache)
+        await redis.store_semantic_key(
+            query=clean_query,
+            embedding=query_embedding,
+            cache_key=cache_key,
+        )
+    else:
+        logger.warning(
+            "Empty answer from Groq for query: %s", clean_query[:50]
+        )
+        response_to_cache = {
+            "answer": formatted_answer,
+            "sources": result["sources"],
+            "model": result["model"],
+            "context_chunks_used": result["context_chunks_used"],
+            "cached": False,
+        }
 
     # STEP 6.5 — Persist to Firestore (non-fatal)
     try:
@@ -163,12 +182,16 @@ async def chat(
             user_uid=user_uid,
             session_id=request.session_id,
             role="assistant",
-            content=result["answer"],
+            content=formatted_answer,
             sources=result["sources"],
-            cached=response_to_cache["cached"],
+            cached=False,
         )
     except Exception as exc:
-        logger.error("[FIRESTORE] Persistence failed for session=%s: %s", request.session_id, exc)
+        logger.error(
+            "[FIRESTORE] Persistence failed for session=%s: %s",
+            request.session_id,
+            exc,
+        )
 
     # STEP 7 — Return response
     return {
@@ -201,8 +224,14 @@ async def get_session_messages(
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    messages = await firestore_svc.get_messages(token["uid"], session_id, limit)
-    return {"session": session, "messages": messages, "count": len(messages)}
+    messages = await firestore_svc.get_messages(
+        token["uid"], session_id, limit
+    )
+    return {
+        "session": session,
+        "messages": messages,
+        "count": len(messages),
+    }
 
 
 @router.delete("/chat/sessions/{session_id}")
@@ -228,7 +257,11 @@ async def update_session_title(
     if not title:
         raise HTTPException(status_code=400, detail="Title cannot be empty")
     if len(title) > 100:
-        raise HTTPException(status_code=400, detail="Title too long (max 100 chars)")
+        raise HTTPException(
+            status_code=400, detail="Title too long (max 100 chars)"
+        )
 
-    await firestore_svc.update_session_title(token["uid"], session_id, title)
+    await firestore_svc.update_session_title(
+        token["uid"], session_id, title
+    )
     return {"updated": True, "session_id": session_id, "title": title}
