@@ -22,27 +22,33 @@ def _ts_to_iso(value) -> str:
         return datetime.now(timezone.utc).isoformat()
     if hasattr(value, "isoformat"):
         return value.isoformat()
-    # Firestore DatetimeWithNanoseconds has a timestamp() method
     if hasattr(value, "timestamp"):
-        return datetime.fromtimestamp(value.timestamp(), tz=timezone.utc).isoformat()
+        return datetime.fromtimestamp(
+            value.timestamp(), tz=timezone.utc
+        ).isoformat()
     return str(value)
 
 
 class FirestoreService:
     """
     Wrapper around Cloud Firestore for chat session and message persistence.
-    Firebase Admin is already initialised by the auth middleware — do NOT
-    call firebase_admin.initialize_app() here.
+    Firebase Admin is already initialised by the auth middleware.
+    Do NOT call firebase_admin.initialize_app() here.
     """
 
     def __init__(self):
         self.db = firebase_admin.firestore.client()
 
-    # ── Helpers ──────────────────────────────────────────────────────────────
+    # ── Helpers ───────────────────────────────────────────────────────────────
 
     def _session_ref(self, user_uid: str, session_id: str):
-        return self.db.collection("users").document(user_uid) \
-                      .collection("sessions").document(session_id)
+        return (
+            self.db
+            .collection("users")
+            .document(user_uid)
+            .collection("sessions")
+            .document(session_id)
+        )
 
     def _messages_ref(self, user_uid: str, session_id: str):
         return self._session_ref(user_uid, session_id).collection("messages")
@@ -51,13 +57,12 @@ class FirestoreService:
     def _doc_to_dict(doc) -> dict:
         """Convert a Firestore document snapshot to a plain dict."""
         data = doc.to_dict() or {}
-        # Normalise all timestamp fields to ISO strings
         for field in ("created_at", "updated_at"):
             if field in data:
                 data[field] = _ts_to_iso(data[field])
         return data
 
-    # ── Session CRUD ─────────────────────────────────────────────────────────
+    # ── Session CRUD ──────────────────────────────────────────────────────────
 
     async def create_session(
         self,
@@ -66,7 +71,9 @@ class FirestoreService:
         first_message: str,
     ) -> dict:
         """Create a new session document and return its metadata."""
-        title = first_message[:60] + ("..." if len(first_message) > 60 else "")
+        title = (
+            first_message[:60] + ("..." if len(first_message) > 60 else "")
+        )
         now_iso = datetime.now(timezone.utc).isoformat()
 
         doc_data = {
@@ -78,7 +85,6 @@ class FirestoreService:
         }
         self._session_ref(user_uid, session_id).set(doc_data)
 
-        # Return dict with readable timestamps instead of SERVER_TIMESTAMP sentinel
         return {
             "session_id": session_id,
             "title": title,
@@ -91,10 +97,15 @@ class FirestoreService:
         """Return up to 50 sessions for a user, newest first."""
         try:
             query = (
-                self.db.collection("users").document(user_uid)
-                    .collection("sessions")
-                    .order_by("updated_at", direction=firestore.Query.DESCENDING)
-                    .limit(50)
+                self.db
+                .collection("users")
+                .document(user_uid)
+                .collection("sessions")
+                .order_by(
+                    "updated_at",
+                    direction=firestore.Query.DESCENDING
+                )
+                .limit(50)
             )
             docs = query.stream()
             sessions = []
@@ -105,7 +116,10 @@ class FirestoreService:
                 sessions.append(data)
             return sessions
         except Exception as exc:
-            logger.error("[FIRESTORE] get_sessions failed for uid=%s: %s", user_uid, exc)
+            logger.error(
+                "[FIRESTORE] get_sessions failed for uid=%s: %s",
+                user_uid, exc
+            )
             return []
 
     async def get_session(
@@ -113,7 +127,7 @@ class FirestoreService:
         user_uid: str,
         session_id: str,
     ) -> dict | None:
-        """Return a single session document, or None if it doesn't exist."""
+        """Return a single session document, or None if not found."""
         try:
             doc = self._session_ref(user_uid, session_id).get()
             if not doc.exists:
@@ -154,7 +168,7 @@ class FirestoreService:
         session_ref.delete()
         return True
 
-    # ── Message CRUD ─────────────────────────────────────────────────────────
+    # ── Message CRUD ──────────────────────────────────────────────────────────
 
     async def save_message(
         self,
@@ -168,6 +182,9 @@ class FirestoreService:
         """
         Append a message to the session and update session metadata.
         Returns the auto-generated message_id.
+
+        Uses set(merge=True) instead of update() so that if the session
+        document doesn't exist yet it is created rather than throwing 404.
         """
         msg_data = {
             "role": role,
@@ -178,11 +195,15 @@ class FirestoreService:
         }
         _, doc_ref = self._messages_ref(user_uid, session_id).add(msg_data)
 
-        # Update parent session
-        self._session_ref(user_uid, session_id).update({
-            "updated_at": firestore.SERVER_TIMESTAMP,
-            "message_count": firestore.Increment(1),
-        })
+        # set with merge=True creates the session doc if missing,
+        # updates it if it already exists — eliminates the 404 error
+        self._session_ref(user_uid, session_id).set(
+            {
+                "updated_at": firestore.SERVER_TIMESTAMP,
+                "message_count": firestore.Increment(1),
+            },
+            merge=True,
+        )
 
         return doc_ref.id
 
@@ -192,12 +213,15 @@ class FirestoreService:
         session_id: str,
         limit: int = 20,
     ) -> list[dict]:
-        """Return messages for a session, oldest first, capped at `limit`."""
+        """Return messages for a session, oldest first, capped at limit."""
         try:
             query = (
                 self._messages_ref(user_uid, session_id)
-                    .order_by("created_at", direction=firestore.Query.ASCENDING)
-                    .limit(limit)
+                .order_by(
+                    "created_at",
+                    direction=firestore.Query.ASCENDING
+                )
+                .limit(limit)
             )
             docs = query.stream()
             messages = []
@@ -220,4 +244,8 @@ class FirestoreService:
         title: str,
     ) -> None:
         """Update the title field of a session."""
-        self._session_ref(user_uid, session_id).update({"title": title})
+        # set with merge=True here too for consistency
+        self._session_ref(user_uid, session_id).set(
+            {"title": title},
+            merge=True,
+        )
