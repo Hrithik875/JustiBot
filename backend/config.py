@@ -35,8 +35,8 @@ class Settings(BaseSettings):
     FIREBASE_SERVICE_ACCOUNT_JSON: str  # Full service account JSON as a string
 
     # Application settings
-    ALLOWED_ORIGINS: str = "http://localhost:3000"
-    RATE_LIMIT_PER_MINUTE: int = 20
+    ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:3001,http://localhost:3002"
+    RATE_LIMIT_PER_MINUTE: int = 100
     CACHE_TTL_SECONDS: int = 86400  # 24 hours
     ENVIRONMENT: str = "development"
 
