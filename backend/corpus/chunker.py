@@ -14,7 +14,7 @@ class DocumentChunker:
     for embedding and Qdrant upload.
     """
 
-    def __init__(self, chunk_size: int = 800, chunk_overlap: int = 150):
+    def __init__(self, chunk_size: int = 400, chunk_overlap: int = 80):
         """
         Args:
             chunk_size: Target characters per chunk.
