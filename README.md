@@ -1,4 +1,4 @@
-# ⚖️ JustiBot — Indian Legal Assistant
+# JustiBot — Indian Legal Assistant
 
 An AI-powered legal chatbot that helps Indian citizens understand their rights, laws, and legal procedures — grounded in official Indian legal documents with zero hallucination tolerance.
 
@@ -12,7 +12,7 @@ An AI-powered legal chatbot that helps Indian citizens understand their rights, 
 
 ---
 
-## 🖥️ Dashboard Preview
+## JustiBot Preview
 
 <p align="center">
   <img src="docs/dashboard.png" alt="JustiBot Dashboard" width="100%">
@@ -20,7 +20,7 @@ An AI-powered legal chatbot that helps Indian citizens understand their rights, 
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 <p align="center">
   <img src="docs/architecture.png" alt="JustiBot Architecture" width="100%">
@@ -40,9 +40,9 @@ An AI-powered legal chatbot that helps Indian citizens understand their rights, 
 
 ---
 
-## ✨ Key Features
+## Key Features
 
-### 📚 Retrieval-Augmented Generation (RAG)
+###  Retrieval-Augmented Generation (RAG)
 
 Every answer is grounded in official Indian legal documents.
 
@@ -51,7 +51,7 @@ Every answer is grounded in official Indian legal documents.
 * Relevance scores displayed
 * Direct links to source documents
 
-### ⚡ Semantic Caching
+###  Semantic Caching
 
 Two-level cache powered by Upstash Redis.
 
@@ -60,7 +60,7 @@ Two-level cache powered by Upstash Redis.
 * ~12× faster repeated queries
 * Reduced LLM costs
 
-### 🎯 Zero-Hallucination Design
+###  Zero-Hallucination Design
 
 Built for legal accuracy.
 
@@ -69,7 +69,7 @@ Built for legal accuracy.
 * Citation enforcement
 * Explicit uncertainty handling
 
-### 🔒 Security
+###  Security
 
 * Firebase JWT verification
 * Prompt injection detection
@@ -77,11 +77,11 @@ Built for legal accuracy.
 * Firestore access controls
 * Per-user data isolation
 
-### 🎙️ Voice Input
+###  Voice Input
 
 Indian-English speech recognition using the Web Speech API.
 
-### 💬 Multi-Session Chat
+###  Multi-Session Chat
 
 * Persistent chat history
 * Searchable sessions
@@ -90,7 +90,7 @@ Indian-English speech recognition using the Web Speech API.
 
 ---
 
-## 📖 Legal Corpus
+##  Legal Corpus
 
 All documents are sourced directly from official Indian government portals.
 
@@ -108,7 +108,7 @@ All documents are sourced directly from official Indian government portals.
 
 ---
 
-## 🛠️ Tech Stack
+##  Tech Stack
 
 | Layer           | Technology                           |
 | --------------- | ------------------------------------ |
@@ -149,7 +149,7 @@ justibot/
 
 ---
 
-## 🚀 Local Setup
+##  Local Setup
 
 ### Prerequisites
 
@@ -220,7 +220,7 @@ http://localhost:3000
 
 ---
 
-## 🔌 API Endpoints
+##  API Endpoints
 
 | Method | Endpoint                         | Auth |
 | ------ | -------------------------------- | ---- |
@@ -249,7 +249,7 @@ justibot-backend
 
 ---
 
-## 🚀 Deployment
+##  Deployment
 
 ### Frontend (Vercel)
 
