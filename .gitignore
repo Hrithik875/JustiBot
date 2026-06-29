@@ -29,3 +29,5 @@ firebase-adminsdk*.json
 .idea/
 .vscode/
 *.swp
+
+/docs

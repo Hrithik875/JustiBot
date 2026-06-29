@@ -1,176 +1,291 @@
-# JustiBot — Indian Legal Assistant Chatbot
+# ⚖️ JustiBot — Indian Legal Assistant
 
-**JustiBot** is a RAG-powered chatbot that helps Indian citizens understand their legal rights, acts, and procedures. It uses a local embedding pipeline, Qdrant Cloud for vector search, Groq for LLM inference, and Firebase for authentication.
+An AI-powered legal chatbot that helps Indian citizens understand their rights, laws, and legal procedures — grounded in official Indian legal documents with zero hallucination tolerance.
+
+![Vectors](https://img.shields.io/badge/Legal%20Vectors-3400%2B-blue)
+![Next.js](https://img.shields.io/badge/Next.js-14-black)
+![FastAPI](https://img.shields.io/badge/FastAPI-Python%203.11-green)
+![Firebase](https://img.shields.io/badge/Auth-Firebase-orange)
+![Qdrant](https://img.shields.io/badge/VectorDB-Qdrant-red)
+
+**3,400+ legal vectors · Semantic caching · Firebase Auth · Voice input · Source citations**
 
 ---
 
-## Repository Structure
+## 🖥️ Dashboard Preview
 
-```
+<p align="center">
+  <img src="docs/dashboard.png" alt="JustiBot Dashboard" width="100%">
+</p>
+
+---
+
+## 🏗️ Architecture
+
+<p align="center">
+  <img src="docs/architecture.png" alt="JustiBot Architecture" width="100%">
+</p>
+
+### Request Flow
+
+1. User submits a text or voice query.
+2. Firebase JWT is verified by the FastAPI backend.
+3. Input is sanitized and checked for prompt injection attempts.
+4. Redis checks exact and semantic caches.
+5. Query is embedded using sentence-transformers.
+6. Qdrant retrieves relevant legal context.
+7. Groq generates a grounded response using retrieved documents.
+8. Chat history is persisted in Firestore.
+9. Sources and citations are returned to the frontend.
+
+---
+
+## ✨ Key Features
+
+### 📚 Retrieval-Augmented Generation (RAG)
+
+Every answer is grounded in official Indian legal documents.
+
+* Context retrieved from vector search
+* Source citations attached to responses
+* Relevance scores displayed
+* Direct links to source documents
+
+### ⚡ Semantic Caching
+
+Two-level cache powered by Upstash Redis.
+
+* Exact query cache
+* Semantic similarity cache (0.92 threshold)
+* ~12× faster repeated queries
+* Reduced LLM costs
+
+### 🎯 Zero-Hallucination Design
+
+Built for legal accuracy.
+
+* Low-temperature generation (`0.1`)
+* Retrieval-first architecture
+* Citation enforcement
+* Explicit uncertainty handling
+
+### 🔒 Security
+
+* Firebase JWT verification
+* Prompt injection detection
+* Input sanitization
+* Firestore access controls
+* Per-user data isolation
+
+### 🎙️ Voice Input
+
+Indian-English speech recognition using the Web Speech API.
+
+### 💬 Multi-Session Chat
+
+* Persistent chat history
+* Searchable sessions
+* Editable titles
+* Sidebar navigation
+
+---
+
+## 📖 Legal Corpus
+
+All documents are sourced directly from official Indian government portals.
+
+| Document                                | Category           |
+| --------------------------------------- | ------------------ |
+| Bharatiya Nyaya Sanhita 2023            | Criminal Law       |
+| Bharatiya Nagarik Suraksha Sanhita 2023 | Procedural Law     |
+| Constitution of India                   | Constitutional Law |
+| RTI Act 2005                            | Civil Law          |
+| Consumer Protection Act 2019            | Consumer Law       |
+| Information Technology Act 2000         | Cyber Law          |
+| National Cyber Crime Portal             | Cyber Law          |
+
+**Corpus Size:** 3,419 vectorized chunks from 7 official legal sources.
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer           | Technology                           |
+| --------------- | ------------------------------------ |
+| Frontend        | Next.js 14, TypeScript, Tailwind CSS |
+| Backend         | FastAPI, Python 3.11                 |
+| Authentication  | Firebase Auth                        |
+| Vector Database | Qdrant Cloud                         |
+| Embeddings      | all-MiniLM-L6-v2 (384 dimensions)    |
+| LLM             | Groq API                             |
+| Cache           | Upstash Redis                        |
+| Persistence     | Cloud Firestore                      |
+| Deployment      | Vercel + Render                      |
+
+---
+
+## 📂 Project Structure
+
+```text
 justibot/
+│
 ├── backend/
-│   ├── main.py                  # FastAPI app entry point
-│   ├── config.py                # Pydantic-settings config
-│   ├── middleware/
-│   │   ├── auth.py              # Firebase JWT verification
-│   │   ├── rate_limit.py        # Per-user slowapi rate limiting
-│   │   └── security.py          # Input sanitization + injection detection
-│   ├── routers/
-│   │   ├── health.py            # Health check endpoints
-│   │   └── chat.py              # Chat endpoints (stub — Phase 2 adds RAG)
-│   ├── services/
-│   │   ├── qdrant_service.py    # Qdrant client wrapper
-│   │   ├── groq_service.py      # Groq LLM wrapper (stub)
-│   │   └── redis_service.py     # Upstash Redis cache wrapper
 │   ├── corpus/
-│   │   ├── ingest.py            # One-time ingestion script
-│   │   ├── chunker.py           # Document chunking (PDF + HTML)
-│   │   ├── embedder.py          # Local sentence-transformers embeddings
-│   │   └── sources.py           # Legal source URLs and helpline data
-│   ├── requirements.txt
-│   ├── .env.example
+│   ├── middleware/
+│   ├── routers/
+│   ├── services/
+│   ├── main.py
 │   └── Dockerfile
-├── README.md
-└── .gitignore
+│
+├── frontend/
+│   ├── app/
+│   ├── components/
+│   ├── lib/
+│   └── types/
+│
+├── firestore.rules
+└── README.md
 ```
 
 ---
 
-## Phases
-
-| Phase | Description | Status |
-|-------|-------------|--------|
-| 0 | Corpus ingestion pipeline | ✅ Complete |
-| 1 | FastAPI backend foundation | ✅ Complete |
-| 2 | RAG pipeline (Groq + Qdrant) | 🔜 Planned |
-| 3 | Session storage (Firestore) | 🔜 Planned |
-| 4+ | Frontend | 🔜 Planned |
-
----
-
-## Phase 0 — Corpus Ingestion (One-time)
+## 🚀 Local Setup
 
 ### Prerequisites
 
-1. Python 3.11+
-2. A Qdrant Cloud cluster (free tier works)
-3. A `.env` file in `backend/` — copy from `.env.example`
+* Python 3.11+
+* Node.js 18+
+* Docker
+* Qdrant Cloud account
+* Groq API key
+* Firebase project
+* Upstash Redis instance
 
-### Setup
+---
+
+### Backend
 
 ```bash
 cd backend
-python -m venv .venv
+
+python -m venv venv
+
 # Windows
-.venv\Scripts\activate
-# macOS/Linux
-source .venv/bin/activate
+venv\Scripts\activate
+
+# Linux / Mac
+source venv/bin/activate
 
 pip install -r requirements.txt
+
+cp .env.example .env
 ```
 
-### Run ingestion
+Populate `.env` with API credentials.
+
+#### One-Time Corpus Ingestion
 
 ```bash
-# From the project root (not inside backend/)
 python -m backend.corpus.ingest
 ```
 
-This will:
-1. Download 6 Indian legal PDFs + 1 HTML page
-2. Chunk documents into ~800-char overlapping segments
-3. Embed each chunk using `all-MiniLM-L6-v2` (384 dims, runs locally)
-4. Upload all vectors to Qdrant Cloud (`justibot_legal` collection)
-5. Upload 6 helpline entries as additional searchable chunks
-
-Estimated time: 15–30 minutes depending on download speeds.
-
-### Legal Sources Ingested
-
-| Act | Category | Year |
-|-----|----------|------|
-| Bharatiya Nyaya Sanhita (BNS) | Criminal | 2023 |
-| Bharatiya Nagarik Suraksha Sanhita (BNSS) | Procedural | 2023 |
-| Constitution of India | Constitutional | 2023 |
-| RTI Act | Civil | 2005 |
-| Consumer Protection Act | Consumer | 2019 |
-| Information Technology Act | Cyber | 2000 |
-| Cybercrime.gov.in Portal | Cyber | 2024 |
-
----
-
-## Phase 1 — FastAPI Backend
-
-### Running locally
+#### Run Backend
 
 ```bash
-# From the project root
 uvicorn backend.main:app --reload
 ```
 
-API docs available at: http://localhost:8000/docs
+Backend:
+http://localhost:8000
 
-### Endpoints
+API Docs:
+http://localhost:8000/docs
 
-| Method | Path | Auth | Description |
-|--------|------|------|-------------|
-| GET | `/` | No | Root ping |
-| GET | `/api/health` | No | Liveness check |
-| GET | `/api/health/detailed` | Firebase | Connectivity check |
-| POST | `/api/chat` | Firebase | Legal query (stub) |
-| GET | `/api/chat/sessions` | Firebase | List sessions (stub) |
-| DELETE | `/api/chat/sessions/{id}` | Firebase | Delete session (stub) |
+---
 
-### Authentication
-
-All `/api/chat` endpoints require:
-```
-Authorization: Bearer <Firebase ID Token>
-```
-
-### Environment Variables
-
-Copy `backend/.env.example` to `backend/.env` and fill in your credentials:
+### Frontend
 
 ```bash
-cp backend/.env.example backend/.env
+cd frontend
+
+npm install
+
+cp .env.local.example .env.local
+
+npm run dev
 ```
 
-Required:
-- `QDRANT_URL` + `QDRANT_API_KEY` — from [Qdrant Cloud](https://cloud.qdrant.io)
-- `GROQ_API_KEY` — from [GroqCloud](https://console.groq.com)
-- `UPSTASH_REDIS_URL` + `UPSTASH_REDIS_TOKEN` — from [Upstash](https://upstash.com)
-- `FIREBASE_PROJECT_ID` + `FIREBASE_SERVICE_ACCOUNT_JSON` — from Firebase Console
+Frontend:
+http://localhost:3000
 
 ---
 
-## Docker
+## 🔌 API Endpoints
+
+| Method | Endpoint                         | Auth |
+| ------ | -------------------------------- | ---- |
+| GET    | /api/health                      | No   |
+| GET    | /api/health/detailed             | Yes  |
+| POST   | /api/chat                        | Yes  |
+| GET    | /api/chat/sessions               | Yes  |
+| GET    | /api/chat/sessions/{id}/messages | Yes  |
+| DELETE | /api/chat/sessions/{id}          | Yes  |
+| PATCH  | /api/chat/sessions/{id}/title    | Yes  |
+
+---
+
+## 🐳 Docker
 
 ```bash
-docker build -t justibot-backend ./backend
-docker run -p 8000:8000 --env-file ./backend/.env justibot-backend
+cd backend
+
+docker build -t justibot-backend .
+
+docker run \
+-p 8000:8000 \
+--env-file .env \
+justibot-backend
 ```
 
 ---
 
-## Security
+## 🚀 Deployment
 
-- Firebase JWT verification on all protected endpoints
-- Per-user rate limiting (20 requests/minute default)
-- Input sanitization: strips control characters, truncates at 2000 chars
-- Prompt injection detection: blocks 11 known adversarial patterns
-- No credentials in source code — all secrets via environment variables
+### Frontend (Vercel)
+
+```bash
+cd frontend
+npx vercel --prod
+```
+
+### Backend (Render)
+
+* Connect GitHub repository
+* Root directory: `backend`
+* Build command:
+
+```bash
+pip install -r requirements.txt
+```
+
+* Start command:
+
+```bash
+uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+```
+
+* Add environment variables from `.env.example`
 
 ---
 
-## Tech Stack
+## ⚠️ Disclaimer
 
-| Component | Technology |
-|-----------|------------|
-| API | FastAPI + uvicorn |
-| Auth | Firebase Admin SDK |
-| Vector DB | Qdrant Cloud |
-| Embeddings | sentence-transformers (local) |
-| LLM | Groq (llama-3.1-70b-versatile) |
-| Cache | Upstash Redis |
-| Rate limiting | slowapi |
+JustiBot provides legal information for educational purposes only and is **not a substitute for professional legal advice**.
+
+Always consult a qualified legal professional for case-specific guidance.
+
+Information is generated using official legal documents available at the time of corpus ingestion and may not reflect the latest amendments.
+
+---
+
+Built for Indian citizens 🇮🇳 using modern AI, RAG, and open-source technologies.
