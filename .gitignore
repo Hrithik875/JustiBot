@@ -30,4 +30,4 @@ firebase-adminsdk*.json
 .vscode/
 *.swp
 
-/docs
+
