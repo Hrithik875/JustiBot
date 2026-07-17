@@ -38,11 +38,22 @@ MAX_CONTEXT_CHARS = 3000
 
 class GroqService:
 
-    MODEL_NAME = "llama-3.1-8b-instant"
+    # Fast model used for classification + simple query generation.
+    # Currently the same string as QUALITY_MODEL because larger Groq
+    # free-tier models (70b, Mixtral) are decommissioned at time of
+    # writing.  The routing infrastructure is intentional — swap
+    # QUALITY_MODEL to e.g. "llama-3.3-70b-versatile" whenever it
+    # becomes available on your account; zero other code changes needed.
+    FAST_MODEL = "llama-3.1-8b-instant"
+    QUALITY_MODEL = "llama-3.1-8b-instant"
+
+    # Keep MODEL_NAME as an alias so any external callers that reference
+    # GroqService.MODEL_NAME continue to work unchanged.
+    MODEL_NAME = QUALITY_MODEL
 
     def __init__(self):
         self.client = groq.Groq(api_key=settings.GROQ_API_KEY)
-        self.model_name = self.MODEL_NAME
+        self.model_name = self.QUALITY_MODEL
 
     async def generate(
         self,
@@ -104,7 +115,7 @@ class GroqService:
                 response = await loop.run_in_executor(
                     None,
                     lambda: self.client.chat.completions.create(
-                        model=self.model_name,
+                        model=self.QUALITY_MODEL,
                         messages=messages,
                         temperature=0.1,
                         max_tokens=2048,
@@ -167,6 +178,142 @@ class GroqService:
         return {
             "answer": answer,
             "sources": sources,
-            "model": self.model_name,
+            "model": self.QUALITY_MODEL,
             "context_chunks_used": len(context_chunks)
+        }
+
+    async def generate_simple(
+        self,
+        query: str,
+        context_chunks: list[dict],
+    ) -> dict:
+        """
+        Lightweight generation path for GREETING and LEGAL_SIMPLE queries.
+
+        Differences from generate():
+        - Shorter system prompt (no full legal disclaimer boilerplate).
+        - GREETING: ignores context_chunks entirely — just responds
+          conversationally as JustiBot.
+        - LEGAL_SIMPLE: uses context_chunks but caps output at 300 tokens.
+        - Uses FAST_MODEL explicitly (currently same string, swappable later).
+        - Tags the returned model field with ' (fast-path)' suffix for
+          transparency in the response and retrieval_debug.
+        """
+        is_greeting = not context_chunks
+
+        FAST_SYSTEM_PROMPT = (
+            "You are JustiBot, a friendly Indian legal assistant. "
+            "Keep your response concise and helpful. "
+            "For legal questions, always cite the relevant Act or Section "
+            "and recommend consulting a qualified lawyer for personalised advice."
+        )
+
+        if is_greeting:
+            user_content = (
+                f"The user said: {query}\n\n"
+                "Respond warmly and briefly as JustiBot. You may mention that "
+                "you specialise in Indian law and invite them to ask a legal "
+                "question. Keep it to 2-3 sentences maximum."
+            )
+        else:
+            sorted_chunks = sorted(
+                context_chunks, key=lambda x: x["score"], reverse=True
+            )
+            chunk_strs = [
+                f"[Source: {chunk['source_name']}]\n{chunk['text']}\n"
+                for chunk in sorted_chunks
+            ]
+            context_str = "\n---\n".join(chunk_strs)
+            if len(context_str) > MAX_CONTEXT_CHARS:
+                context_str = context_str[:MAX_CONTEXT_CHARS] + "\n...[context truncated]"
+
+            user_content = (
+                f"LEGAL CONTEXT:\n{context_str}\n\n"
+                f"---\n\n"
+                f"USER QUERY: {query}\n\n"
+                "Answer concisely in 1-3 sentences. Cite the relevant Act or "
+                "Section. Recommend consulting a lawyer for specific advice."
+            )
+
+        messages = [
+            {"role": "system", "content": FAST_SYSTEM_PROMPT},
+            {"role": "user", "content": user_content},
+        ]
+
+        MAX_RETRIES = 2
+        answer = ""
+
+        for attempt in range(MAX_RETRIES):
+            try:
+                loop = asyncio.get_event_loop()
+                response = await loop.run_in_executor(
+                    None,
+                    lambda: self.client.chat.completions.create(
+                        model=self.FAST_MODEL,
+                        messages=messages,
+                        temperature=0.1,
+                        max_tokens=300 if not is_greeting else 80,
+                        top_p=0.9,
+                    ),
+                )
+                answer = response.choices[0].message.content
+
+                if answer and len(answer.strip()) > 0:
+                    logging.info(
+                        f"[FAST-PATH] Groq responded on attempt {attempt + 1}"
+                    )
+                    break
+                else:
+                    logging.warning(
+                        f"[FAST-PATH] Empty answer on attempt "
+                        f"{attempt + 1}/{MAX_RETRIES} — retrying..."
+                    )
+                    await asyncio.sleep(2)
+
+            except groq.RateLimitError:
+                if attempt < MAX_RETRIES - 1:
+                    logging.warning(
+                        f"[FAST-PATH] Rate limit on attempt {attempt + 1} — waiting 10s"
+                    )
+                    await asyncio.sleep(10)
+                    continue
+                raise HTTPException(
+                    429,
+                    "You've reached the AI service limit. "
+                    "Please wait a minute and try again.",
+                )
+            except groq.APIError as e:
+                logging.error(f"[FAST-PATH] Groq APIError: {e}")
+                raise HTTPException(502, "LLM service temporarily unavailable.")
+            except Exception as e:
+                logging.error(f"[FAST-PATH] Generation failed: {e}")
+                raise HTTPException(500, f"Failed to generate response: {e}")
+
+        if not answer or len(answer.strip()) == 0:
+            logging.error("[FAST-PATH] Groq returned empty answer after all retries")
+            raise HTTPException(
+                502, "The AI service returned an empty response. Please try again."
+            )
+
+        # Build sources list (empty for greetings, deduplicated for legal simple)
+        sources = []
+        if not is_greeting:
+            seen_urls: set[str] = set()
+            for chunk in sorted(
+                context_chunks, key=lambda x: x["score"], reverse=True
+            ):
+                if chunk["source_url"] not in seen_urls:
+                    seen_urls.add(chunk["source_url"])
+                    sources.append({
+                        "name": chunk["source_name"],
+                        "url": chunk["source_url"],
+                        "category": chunk["category"],
+                        "relevance_score": round(chunk["score"], 3),
+                    })
+
+        return {
+            "answer": answer,
+            "sources": sources,
+            "model": f"{self.FAST_MODEL} (fast-path)",
+            "context_chunks_used": len(context_chunks),
         }
