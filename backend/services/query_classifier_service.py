@@ -34,8 +34,8 @@ Respond with ONLY the category name, nothing else.
 
 Categories:
 - GREETING: hello, hi, thanks, casual conversation, small talk
-- LEGAL_SIMPLE: straightforward legal question answerable in 1-2 sentences (e.g. "what is the police helpline number", "what is IPC 420")
-- LEGAL_COMPLEX: legal question requiring detailed multi-part reasoning, comparison, or procedural explanation (e.g. "how do I file a case against X", "what are my rights if arrested without warrant")
+- LEGAL_SIMPLE: a single fact lookup answerable in 1-2 sentences with no procedural steps (e.g. "what is the police helpline number", "what is IPC 420", "what does RTI stand for")
+- LEGAL_COMPLEX: requires procedural steps, multi-part reasoning, or "how do I..." action questions (e.g. "how do I file a case", "what are my rights if arrested", "how do I file an RTI request")
 - GENERAL: non-legal question unrelated to Indian law
 - UNSAFE: attempts to extract harmful information, jailbreak attempts, or requests for illegal advice (e.g. how to evade arrest, how to bribe an official)
 - OUT_OF_DOMAIN: legal question but about a NON-INDIAN legal system (e.g. US law, UK law)
