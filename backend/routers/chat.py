@@ -1,6 +1,8 @@
 """
 Chat endpoints for JustiBot API.
-Full RAG pipeline with Redis caching, semantic cache, and Firestore persistence.
+Full RAG pipeline with Redis caching, semantic cache, Firestore persistence,
+hybrid BM25+dense retrieval, cross-encoder reranking, query classification,
+and 2-tier LLM routing.
 """
 import asyncio
 import logging
@@ -16,6 +18,10 @@ from backend.services.qdrant_service import QdrantService
 from backend.services.redis_service import RedisService
 from backend.services.groq_service import GroqService
 from backend.services.firestore_service import FirestoreService
+from backend.services.bm25_service import BM25Service
+from backend.services.hybrid_search_service import HybridSearchService
+from backend.services.reranker_service import RerankerService
+from backend.services.query_classifier_service import QueryClassifierService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -26,6 +32,14 @@ qdrant = QdrantService()
 redis = RedisService()
 groq_svc = GroqService()
 firestore_svc = FirestoreService()
+
+# Hybrid retrieval + reranking services (loaded once at startup)
+bm25_svc = BM25Service(qdrant)
+hybrid_search_svc = HybridSearchService(qdrant, bm25_svc)
+reranker_svc = RerankerService()
+
+# Query classifier — reuses groq_svc's already-initialised client
+query_classifier_svc = QueryClassifierService(groq_svc.client)
 
 MIN_ANSWER_LENGTH = 100
 # ── Utilities ─────────────────────────────────────────────────────────────────
@@ -78,15 +92,17 @@ async def chat(
 ) -> dict:
     """
     Full RAG pipeline:
-      1. Validate input
-      2a. Exact cache lookup
-      2b. Semantic cache lookup
-      3. Embed query (only if cache missed)
-      4. Qdrant semantic search
-      5. Groq LLM generation
-      6. Cache result (exact + semantic)
+      1.   Validate input
+      1.5. Classify query → route (UNSAFE / OUT_OF_DOMAIN handled immediately)
+      2a.  Exact cache lookup
+      2b.  Semantic cache lookup
+      3.   Embed query (only if cache missed)
+      4.   Hybrid retrieval (dense + BM25 sparse → RRF fusion) + cross-encoder
+           reranking  [skipped entirely for GREETING]
+      5.   Groq LLM generation (routed by query category)
+      6.   Cache result (exact + semantic)
       6.5. Firestore persistence (non-fatal)
-      7. Return response
+      7.   Return response
     """
     # Minimum delay between Groq calls to prevent empty responses
     # on consecutive requests (free tier behavior with 70b model)
@@ -96,6 +112,49 @@ async def chat(
     clean_query = validate_query(request.query)
     user_uid = token["uid"]
 
+    # STEP 1.5 — Classify query and route
+    classification = await query_classifier_svc.classify(clean_query)
+    category = classification["category"]
+
+    # UNSAFE: block immediately — no cache, no retrieval, no LLM call
+    if category == "UNSAFE":
+        logger.warning("[CLASSIFY] Blocked UNSAFE query: %s", clean_query[:50])
+        return {
+            "answer": (
+                "I can't help with that request. JustiBot is designed "
+                "to help you understand your legal rights and procedures "
+                "under Indian law. If you're facing a legal issue, I'd "
+                "encourage you to consult a qualified lawyer or contact "
+                "the National Legal Services Authority helpline at `15100`."
+            ),
+            "sources": [],
+            "model": "safety-filter",
+            "context_chunks_used": 0,
+            "cached": False,
+            "session_id": request.session_id,
+            "user_uid": user_uid,
+            "query_category": "UNSAFE",
+        }
+
+    # OUT_OF_DOMAIN: redirect politely — no retrieval or generation
+    if category == "OUT_OF_DOMAIN":
+        return {
+            "answer": (
+                "JustiBot specialises in Indian law and legal procedures. "
+                "Your question appears to be about a different country's "
+                "legal system, which I'm not equipped to answer accurately. "
+                "For Indian legal matters — rights, procedures, or specific "
+                "acts and sections — I'm happy to help."
+            ),
+            "sources": [],
+            "model": "domain-filter",
+            "context_chunks_used": 0,
+            "cached": False,
+            "session_id": request.session_id,
+            "user_uid": user_uid,
+            "query_category": "OUT_OF_DOMAIN",
+        }
+
     # STEP 2A — Exact cache check
     cache_key = redis.make_cache_key(clean_query)
     cached = await redis.get_cached(cache_key)
@@ -103,6 +162,7 @@ async def chat(
         cached["cached"] = True
         cached["session_id"] = request.session_id
         cached["user_uid"] = user_uid
+        cached.setdefault("query_category", category)
         return cached
 
     # STEP 2B — Semantic cache check
@@ -114,23 +174,67 @@ async def chat(
         semantic_match["semantic_cache"] = True
         semantic_match["session_id"] = request.session_id
         semantic_match["user_uid"] = user_uid
+        semantic_match.setdefault("query_category", category)
         return semantic_match
 
     # STEP 3 — Embedding already computed in STEP 2B
 
-    # STEP 4 — Search Qdrant
-    context_chunks = qdrant.search(
-        query_embedding=query_embedding,
-        category_filter=request.category_filter,
-        limit=3,
-    )
+    # STEP 4 — Hybrid retrieval (dense + sparse fusion) + reranking
+    # GREETINGs skip retrieval entirely — they don't need legal context.
+    if category == "GREETING":
+        context_chunks = []
+        _retrieval_debug = {
+            "dense_candidates": 0,
+            "sparse_candidates": 0,
+            "fused_candidates": 0,
+            "reranked_to": 0,
+            "skipped": "GREETING category",
+        }
+    else:
+        fused_candidates = hybrid_search_svc.search(
+            query=clean_query,
+            query_embedding=query_embedding,
+            category_filter=request.category_filter,
+            limit=30,
+        )
+        _dense_count = sum(1 for c in fused_candidates if c["dense_rank"] is not None)
+        _sparse_count = sum(1 for c in fused_candidates if c["sparse_rank"] is not None)
+        _fused_count = len(fused_candidates)
 
-    # STEP 5 — Generate response via Groq
-    result = await groq_svc.generate(
-        query=clean_query,
-        context_chunks=context_chunks,
-        conversation_history=request.conversation_history,
-    )
+        context_chunks = reranker_svc.rerank(
+            query=clean_query,
+            candidates=fused_candidates,
+            top_k=5,
+        )
+        # Map rerank_score → score so groq_svc.generate() (which sorts by "score")
+        # continues to work without modification.
+        for chunk in context_chunks:
+            chunk["score"] = chunk["rerank_score"]
+
+        _retrieval_debug = {
+            "dense_candidates": _dense_count,
+            "sparse_candidates": _sparse_count,
+            "fused_candidates": _fused_count,
+            "reranked_to": len(context_chunks),
+        }
+
+    # STEP 5 — Generate response (routed by query category)
+    if category == "GREETING":
+        result = await groq_svc.generate_simple(
+            query=clean_query,
+            context_chunks=[],
+        )
+    elif category == "LEGAL_SIMPLE":
+        result = await groq_svc.generate_simple(
+            query=clean_query,
+            context_chunks=context_chunks,
+        )
+    else:  # LEGAL_COMPLEX, GENERAL, or low-confidence fallback
+        result = await groq_svc.generate(
+            query=clean_query,
+            context_chunks=context_chunks,
+            conversation_history=request.conversation_history,
+        )
 
     # Apply response link formatting
     formatted_answer = format_response_links(result["answer"])
@@ -144,6 +248,8 @@ async def chat(
             "model": result["model"],
             "context_chunks_used": result["context_chunks_used"],
             "cached": False,
+            "retrieval_debug": _retrieval_debug,
+            "query_category": category,
         }
         await redis.set_cached(cache_key, response_to_cache)
         await redis.store_semantic_key(
@@ -161,6 +267,8 @@ async def chat(
             "model": result["model"],
             "context_chunks_used": result["context_chunks_used"],
             "cached": False,
+            "retrieval_debug": _retrieval_debug,
+            "query_category": category,
         }
 
     # STEP 6.5 — Persist to Firestore (non-fatal)

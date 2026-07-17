@@ -29,6 +29,7 @@ class QdrantService:
         self.client = QdrantClient(
             url=settings.QDRANT_URL,
             api_key=settings.QDRANT_API_KEY,
+            port=443,
             timeout=60,
         )
         self.collection_name = settings.QDRANT_COLLECTION
@@ -149,3 +150,42 @@ class QdrantService:
             )
 
         return results
+
+    def get_all_chunks(self) -> list[dict]:
+        """
+        Full corpus export for BM25 indexing.
+
+        Pages through every point in the collection using Qdrant's scroll
+        API (no vector required — payload-only fetch).  Returns the text
+        and all metadata for each chunk so BM25Service can build its index.
+
+        Returns:
+            List of dicts: [{"text": str, "metadata": {...}}]
+        """
+        SCROLL_BATCH = 256
+        all_chunks: list[dict] = []
+        offset = None  # None = start from beginning
+
+        while True:
+            records, next_offset = self.client.scroll(
+                collection_name=self.collection_name,
+                limit=SCROLL_BATCH,
+                offset=offset,
+                with_payload=True,
+                with_vectors=False,
+            )
+
+            for record in records:
+                payload = record.payload or {}
+                text = payload.get("text", "")
+                metadata = {
+                    k: v for k, v in payload.items() if k != "text"
+                }
+                all_chunks.append({"text": text, "metadata": metadata})
+
+            if next_offset is None:
+                break
+            offset = next_offset
+
+        print(f"[QDRANT] Exported {len(all_chunks)} chunks for BM25 indexing")
+        return all_chunks
