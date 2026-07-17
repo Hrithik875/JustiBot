@@ -121,17 +121,45 @@ async def chat(
     classification = await query_classifier_svc.classify(clean_query)
     category = classification["category"]
 
+    async def _persist_chat(answer_text: str, sources_list: list, model_name: str, is_cached: bool):
+        try:
+            if request.is_new_session:
+                await firestore_svc.create_session(
+                    user_uid=user_uid,
+                    session_id=request.session_id,
+                    first_message=clean_query,
+                )
+            await firestore_svc.save_message(
+                user_uid=user_uid,
+                session_id=request.session_id,
+                role="user",
+                content=clean_query,
+            )
+            await firestore_svc.save_message(
+                user_uid=user_uid,
+                session_id=request.session_id,
+                role="assistant",
+                content=answer_text,
+                sources=sources_list,
+                cached=is_cached,
+                model=model_name,
+            )
+        except Exception as exc:
+            logger.error("[FIRESTORE] Persistence failed: %s", exc)
+
     # UNSAFE: block immediately — no cache, no retrieval, no LLM call
     if category == "UNSAFE":
         logger.warning("[CLASSIFY] Blocked UNSAFE query: %s", clean_query[:50])
+        unsafe_answer = (
+            "I can't help with that request. JustiBot is designed "
+            "to help you understand your legal rights and procedures "
+            "under Indian law. If you're facing a legal issue, I'd "
+            "encourage you to consult a qualified lawyer or contact "
+            "the National Legal Services Authority helpline at `15100`."
+        )
+        await _persist_chat(unsafe_answer, [], "safety-filter", False)
         return {
-            "answer": (
-                "I can't help with that request. JustiBot is designed "
-                "to help you understand your legal rights and procedures "
-                "under Indian law. If you're facing a legal issue, I'd "
-                "encourage you to consult a qualified lawyer or contact "
-                "the National Legal Services Authority helpline at `15100`."
-            ),
+            "answer": unsafe_answer,
             "sources": [],
             "model": "safety-filter",
             "context_chunks_used": 0,
@@ -143,14 +171,16 @@ async def chat(
 
     # OUT_OF_DOMAIN: redirect politely — no retrieval or generation
     if category == "OUT_OF_DOMAIN":
+        ood_answer = (
+            "JustiBot specialises in Indian law and legal procedures. "
+            "Your question appears to be about a different country's "
+            "legal system, which I'm not equipped to answer accurately. "
+            "For Indian legal matters — rights, procedures, or specific "
+            "acts and sections — I'm happy to help."
+        )
+        await _persist_chat(ood_answer, [], "domain-filter", False)
         return {
-            "answer": (
-                "JustiBot specialises in Indian law and legal procedures. "
-                "Your question appears to be about a different country's "
-                "legal system, which I'm not equipped to answer accurately. "
-                "For Indian legal matters — rights, procedures, or specific "
-                "acts and sections — I'm happy to help."
-            ),
+            "answer": ood_answer,
             "sources": [],
             "model": "domain-filter",
             "context_chunks_used": 0,
@@ -168,6 +198,7 @@ async def chat(
         cached["session_id"] = request.session_id
         cached["user_uid"] = user_uid
         cached.setdefault("query_category", category)
+        await _persist_chat(cached["answer"], cached.get("sources", []), cached.get("model", "unknown"), True)
         return cached
 
     # STEP 2B — Semantic cache check
@@ -180,6 +211,7 @@ async def chat(
         semantic_match["session_id"] = request.session_id
         semantic_match["user_uid"] = user_uid
         semantic_match.setdefault("query_category", category)
+        await _persist_chat(semantic_match["answer"], semantic_match.get("sources", []), semantic_match.get("model", "unknown"), True)
         return semantic_match
 
     # STEP 3 — Embedding already computed in STEP 2B
@@ -305,35 +337,7 @@ async def chat(
         }
 
     # STEP 6.5 — Persist to Firestore (non-fatal)
-    try:
-        if request.is_new_session:
-            await firestore_svc.create_session(
-                user_uid=user_uid,
-                session_id=request.session_id,
-                first_message=clean_query,
-            )
-
-        await firestore_svc.save_message(
-            user_uid=user_uid,
-            session_id=request.session_id,
-            role="user",
-            content=clean_query,
-        )
-        await firestore_svc.save_message(
-            user_uid=user_uid,
-            session_id=request.session_id,
-            role="assistant",
-            content=formatted_answer,
-            sources=result["sources"],
-            cached=False,
-            model=result["model"],
-        )
-    except Exception as exc:
-        logger.error(
-            "[FIRESTORE] Persistence failed for session=%s: %s",
-            request.session_id,
-            exc,
-        )
+    await _persist_chat(formatted_answer, result["sources"], result["model"], False)
 
     # STEP 7 — Return response
     return {
