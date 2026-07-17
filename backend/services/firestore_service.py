@@ -178,6 +178,7 @@ class FirestoreService:
         content: str,
         sources: list = [],
         cached: bool = False,
+        model: str | None = None,
     ) -> str:
         """
         Append a message to the session and update session metadata.
@@ -191,6 +192,7 @@ class FirestoreService:
             "content": content,
             "sources": sources,
             "cached": cached,
+            "model": model,
             "created_at": firestore.SERVER_TIMESTAMP,
         }
         _, doc_ref = self._messages_ref(user_uid, session_id).add(msg_data)

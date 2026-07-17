@@ -5,6 +5,7 @@ export interface Message {
   sources: Source[]
   cached: boolean
   semanticCache?: boolean
+  model?: string
   createdAt: string
 }
 

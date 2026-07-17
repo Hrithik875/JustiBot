@@ -326,6 +326,7 @@ async def chat(
             content=formatted_answer,
             sources=result["sources"],
             cached=False,
+            model=result["model"],
         )
     except Exception as exc:
         logger.error(
