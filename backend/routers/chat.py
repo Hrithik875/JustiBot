@@ -22,6 +22,7 @@ from backend.services.bm25_service import BM25Service
 from backend.services.hybrid_search_service import HybridSearchService
 from backend.services.reranker_service import RerankerService
 from backend.services.query_classifier_service import QueryClassifierService
+from backend.services.hallucination_checker_service import HallucinationCheckerService
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -40,6 +41,9 @@ reranker_svc = RerankerService()
 
 # Query classifier — reuses groq_svc's already-initialised client
 query_classifier_svc = QueryClassifierService(groq_svc.client)
+
+# Hallucination checker — pure text analysis, no model loading
+hallucination_checker_svc = HallucinationCheckerService()
 
 MIN_ANSWER_LENGTH = 100
 # ── Utilities ─────────────────────────────────────────────────────────────────
@@ -100,6 +104,7 @@ async def chat(
       4.   Hybrid retrieval (dense + BM25 sparse → RRF fusion) + cross-encoder
            reranking  [skipped entirely for GREETING]
       5.   Groq LLM generation (routed by query category)
+      5.5. Hallucination check (LEGAL_SIMPLE / LEGAL_COMPLEX only)
       6.   Cache result (exact + semantic)
       6.5. Firestore persistence (non-fatal)
       7.   Return response
@@ -236,8 +241,34 @@ async def chat(
             conversation_history=request.conversation_history,
         )
 
+    # STEP 5.5 — Hallucination check
+    # Only meaningful for answers grounded in retrieved legal context.
+    # Greetings, safety blocks, and domain redirects skip this.
+    if category in ("LEGAL_SIMPLE", "LEGAL_COMPLEX"):
+        hallucination_check = hallucination_checker_svc.check(
+            answer=result["answer"],
+            context_chunks=context_chunks,
+        )
+    else:
+        hallucination_check = {
+            "confidence": "high",
+            "warning": None,
+            "grounding_ratio": 1.0,
+            "lexical_overlap": 1.0,
+            "citations_found": [],
+            "citations_ungrounded": [],
+        }
+
     # Apply response link formatting
     formatted_answer = format_response_links(result["answer"])
+
+    # Prepend a visible warning banner when confidence is low so the
+    # caution is present even if the frontend doesn’t render the
+    # hallucination_check metadata field yet.
+    if hallucination_check["confidence"] == "low" and hallucination_check["warning"]:
+        formatted_answer = (
+            f"⚠️ *{hallucination_check['warning']}*\n\n{formatted_answer}"
+        )
 
     # STEP 6 — Cache the result
     # Only cache non-empty answers — never cache empty responses
@@ -250,6 +281,7 @@ async def chat(
             "cached": False,
             "retrieval_debug": _retrieval_debug,
             "query_category": category,
+            "hallucination_check": hallucination_check,
         }
         await redis.set_cached(cache_key, response_to_cache)
         await redis.store_semantic_key(
@@ -269,6 +301,7 @@ async def chat(
             "cached": False,
             "retrieval_debug": _retrieval_debug,
             "query_category": category,
+            "hallucination_check": hallucination_check,
         }
 
     # STEP 6.5 — Persist to Firestore (non-fatal)

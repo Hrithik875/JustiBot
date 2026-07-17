@@ -44,8 +44,8 @@ class GroqService:
     # writing.  The routing infrastructure is intentional — swap
     # QUALITY_MODEL to e.g. "llama-3.3-70b-versatile" whenever it
     # becomes available on your account; zero other code changes needed.
-    FAST_MODEL = "llama-3.1-8b-instant"
-    QUALITY_MODEL = "llama-3.1-8b-instant"
+    FAST_MODEL = "openai/gpt-oss-20b"
+    QUALITY_MODEL = "openai/gpt-oss-120b"
 
     # Keep MODEL_NAME as an alias so any external callers that reference
     # GroqService.MODEL_NAME continue to work unchanged.
