@@ -185,7 +185,7 @@ export function MessageBubble({ message }: MessageBubbleProps) {
 
         {/* Metadata row */}
         <div className="flex items-center gap-2 mt-2 pl-8 flex-wrap">
-          <span className="text-xs text-muted">llama-3.3-70b-versatile</span>
+          <span className="text-xs text-muted">{message.model || 'AI Assistant'}</span>
           {message.semanticCache && (
             <span className="text-xs px-1.5 py-0.5 rounded border border-border text-muted">
               ⚡ Semantic cache
