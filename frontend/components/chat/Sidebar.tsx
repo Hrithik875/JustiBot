@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter, usePathname } from 'next/navigation'
-import { Scale, Plus, Search, Trash2, LogOut, MessageSquare } from 'lucide-react'
+import { Scale, Plus, Search, Trash2, LogOut, MessageSquare, BarChart3 } from 'lucide-react'
 import { ThemeToggle } from '@/components/ui/ThemeToggle'
 import { useAuth } from '@/lib/hooks/useAuth'
 import { useSessions } from '@/lib/hooks/useSessions'
@@ -121,6 +121,17 @@ export function Sidebar() {
             })}
           </div>
         )}
+      </div>
+
+      {/* ── Dashboard Link ─────────────────────────────────────────── */}
+      <div className="px-3 py-2 border-t border-border">
+        <Link
+          href="/dashboard"
+          className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-xs text-muted hover:bg-bg hover:text-text transition-colors font-medium"
+        >
+          <BarChart3 size={14} />
+          Dashboard
+        </Link>
       </div>
 
       {/* ── User Footer ───────────────────────────────────────────── */}
