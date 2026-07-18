@@ -73,3 +73,24 @@ class RerankerService:
         print(f"[RERANK] {len(candidates)} candidates -> top {top_k}")
 
         return result
+
+    def is_retrieval_weak(
+        self,
+        reranked_results: list[dict],
+        score_threshold: float = 0.15,
+    ) -> bool:
+        """
+        Returns True if retrieval is weak — meaning the reranker itself
+        is not confident any of the top results are relevant.
+
+        A cross-encoder score near 0 (after sigmoid normalization already
+        applied in rerank()) indicates the model doesn't think the chunk
+        is relevant to the query.
+
+        Weak if: the TOP result's normalized rerank score is below
+        score_threshold, OR fewer than 2 results exist at all.
+        """
+        if len(reranked_results) < 2:
+            return True
+        top_score = reranked_results[0].get("score", 0.0)
+        return top_score < score_threshold
