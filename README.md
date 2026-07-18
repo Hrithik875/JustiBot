@@ -2,7 +2,7 @@
 
 An AI-powered legal chatbot that helps Indian citizens understand their rights, laws, and legal procedures — grounded in official Indian legal documents with zero hallucination tolerance.
 
-![Vectors](https://img.shields.io/badge/Legal%20Vectors-3400%2B-blue)
+![Vectors](https://img.shields.io/badge/Legal%20Vectors-6800%2B-blue)
 ![Next.js](https://img.shields.io/badge/Next.js-14-black)
 ![FastAPI](https://img.shields.io/badge/FastAPI-Python%203.11-green)
 ![Firebase](https://img.shields.io/badge/Auth-Firebase-orange)
@@ -182,16 +182,70 @@ and logged failure modes.
 * A 20-case labeled test set spanning all 7 corpus sources, plus
   deliberately out-of-scope topics (inheritance, patents, family
   law) as negative controls
-* 5 custom lightweight metrics computed per test case:
-  keyword coverage, context precision, context recall (proxy),
-  answer relevance, and faithfulness (derived from the
-  hallucination checker)
 * Runs via `python -m backend.evaluation.run_eval`, producing a
   full JSON report and console summary
-* Out-of-scope test cases correctly show near-zero context
-  precision and low faithfulness, confirming the metrics
-  discriminate real quality rather than trivially returning high
-  scores
+
+| Metric              | Score |
+|---------------------|-------|
+| Keyword Coverage     | 0.755 |
+| Context Precision    | 0.459 |
+| Context Recall       | 0.435 |
+| Answer Relevance     | 0.837 |
+| Faithfulness         | 0.624 |
+| Classification Accuracy | 19/20 (95%)* |
+
+*\*tc_016 (patent application) misclassified as LEGAL_SIMPLE instead of LEGAL_COMPLEX (known boundary case).*
+
+### Retrieval Method Comparison
+
+Measured on 17 retrieval-eligible test cases using `benchmark_retrieval.py`:
+
+| Method | Avg Recall@5 | Avg Latency (ms) |
+|---|---|---|
+| Dense only | 0.385 | 199.7ms |
+| BM25 only | 0.357 | 32.9ms |
+| Hybrid (RRF) | 0.456 | 201.2ms |
+| Hybrid + Reranker | 0.447 | 1106.2ms |
+
+> [!NOTE]
+> Hybrid search significantly improves recall over dense-only or BM25-only by fusing exact keyword matching with semantic similarity. 
+> 
+> Note: recall@5 measures whether relevant documents were retrieved at all, not how well-ordered they are. The reranker is not expected to improve this metric — its purpose is improving precision at the top of the ranked list and reducing noisy context passed to the LLM, which is better reflected in the context_precision and faithfulness metrics from the evaluation pipeline above, not in recall@5. This benchmark shows a real latency/recall tradeoff worth being explicit about rather than assuming reranking is a universal improvement.
+
+### Pipeline Latency Breakdown
+
+Measured from live observability events (N=38) using `generate_latency_report.py`:
+
+| Stage | Avg (ms) | % of Total |
+|---|---|---|
+| Classification | 232.2ms | 5.6% |
+| Embedding | 35.5ms | 0.9% |
+| Hybrid Search | 434.9ms | 10.6% |
+| Reranking | 840.1ms | 20.4% |
+| Broadened Retry | 1022.7ms | 24.9% |
+| Generation | 1546.5ms | 37.6% |
+| Hallucination Check | 1.3ms | 0.0% |
+| **Total** | **4113.1ms** | **100.0%** |
+
+*(Note: Stage averages are calculated unconditionally across all N requests so percentages sum cleanly to 100%. Because cache hits skip retrieval and generation, the raw averages for those specific stages during a cache miss are actually higher than shown here).*
+
+### Cost Analysis
+
+Estimated API cost savings vs baseline (N=38 events) using `cost_analysis.py`:
+
+| Scenario | Est. Cost | Savings vs Baseline |
+|---|---|---|
+| Naive (no routing, no cache) | $0.004620 | — |
+| Routing only (no cache) | $0.003217 | 30.4% |
+| Routing + Caching (current) | $0.002709 | 41.4% |
+
+### Naive RAG vs JustiBot
+
+**Naive RAG:**
+Query → Dense search → LLM → Answer
+
+**JustiBot:**
+Query → Classify → Hybrid search → Rerank → Confidence gate → Route to model → Generate → Verify → Answer
 
 ### Confidence-Gated (Agentic) Retrieval
 
@@ -217,6 +271,17 @@ and logged failure modes.
   request
 * Built entirely on infrastructure already in use (Upstash Redis)
   — no new paid service required
+
+## Design Decisions
+
+| Problem | Decision | Why |
+|---|---|---|
+| Dense retrieval alone misses exact legal terms (section numbers, act names) | Hybrid retrieval (dense + BM25 + RRF) | BM25 catches exact keyword matches dense embeddings can miss |
+| Reranker trained on conversational text scores formal legal text poorly in absolute terms | Relative score threshold instead of absolute | Investigated via controlled experiment — absolute scores were domain-miscalibrated but relative ranking remained meaningful |
+| Every query hitting the largest model wastes cost on simple lookups | 2-tier LLM router based on query classification | Routes simple/greeting queries to a smaller, faster model |
+| Zero-shot classification confused BNS/BNSS with out-of-domain law | Corpus-aware context injection + few-shot examples | Raised classification accuracy from 45% to 95%, verified via eval pipeline |
+| LLMs can cite plausible-sounding but ungrounded legal sections | Citation-grounding hallucination checker | Pure text-analysis, no extra LLM call, near-zero added latency |
+| Repeated/similar questions re-run the full pipeline unnecessarily | Exact + semantic Redis caching | ~12x speedup on cache hit, verified via observability data |
 
 ---
 
