@@ -121,6 +121,7 @@ async def chat(
 
     # ── Observability: timing collector ──────────────────────────────────────
     timings: dict[str, float] = {}
+    retrieval_broadened = False
 
     # STEP 1 — Validate and sanitize input
     clean_query = validate_query(request.query)
@@ -312,6 +313,47 @@ async def chat(
         for chunk in context_chunks:
             chunk["score"] = chunk["rerank_score"]
 
+        # STEP 4.5 — Confidence-gated broadened retry (bounded to ONE
+        # extra pass, never loops further)
+        if reranker_svc.is_retrieval_weak(context_chunks):
+            logger.info(
+                "[RETRIEVAL] Weak initial retrieval (top score=%.3f) — "
+                "broadening search once",
+                context_chunks[0].get("score", 0.0) if context_chunks else 0.0,
+            )
+            t0 = time.perf_counter()
+            fused_broad = hybrid_search_svc.search_broadened(
+                query=clean_query,
+                query_embedding=query_embedding,
+                limit=50,
+            )
+            broadened_reranked = reranker_svc.rerank(
+                clean_query, fused_broad, top_k=5,
+            )
+            timings["broadened_retry"] = (time.perf_counter() - t0) * 1000
+
+            # Map rerank_score → score on broadened results too
+            for chunk in broadened_reranked:
+                chunk["score"] = chunk["rerank_score"]
+
+            # Only USE the broadened results if they're actually better
+            if (
+                broadened_reranked
+                and broadened_reranked[0].get("score", 0.0)
+                > (context_chunks[0].get("score", 0.0) if context_chunks else 0.0)
+            ):
+                context_chunks = broadened_reranked
+                retrieval_broadened = True
+                logger.info(
+                    "[RETRIEVAL] Broadened search improved top score to %.3f",
+                    context_chunks[0]["score"],
+                )
+            else:
+                logger.info(
+                    "[RETRIEVAL] Broadened search did not improve results — "
+                    "keeping original"
+                )
+
         _retrieval_debug = {
             "dense_candidates": _dense_count,
             "sparse_candidates": _sparse_count,
@@ -382,6 +424,7 @@ async def chat(
             "retrieval_debug": _retrieval_debug,
             "query_category": category,
             "hallucination_check": hallucination_check,
+            "retrieval_broadened": retrieval_broadened,
         }
         await redis.set_cached(cache_key, response_to_cache)
         await redis.store_semantic_key(
@@ -402,6 +445,7 @@ async def chat(
             "retrieval_debug": _retrieval_debug,
             "query_category": category,
             "hallucination_check": hallucination_check,
+            "retrieval_broadened": retrieval_broadened,
         }
 
     # STEP 6.5 — Persist to Firestore (non-fatal)
@@ -422,6 +466,7 @@ async def chat(
             input_tokens=len(clean_query) // 4,
             output_tokens=len(result.get("answer", "")) // 4,
         ),
+        "retrieval_broadened": retrieval_broadened,
     }))
 
     # STEP 7 — Return response
