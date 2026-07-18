@@ -490,6 +490,7 @@ export default function DashboardPage() {
                   'Latency',
                   'Cost',
                   'Confidence',
+                  'Broadened',
                 ].map((h) => (
                   <th
                     key={h}
@@ -504,7 +505,7 @@ export default function DashboardPage() {
               {events.length === 0 ? (
                 <tr>
                   <td
-                    colSpan={7}
+                    colSpan={8}
                     className="px-4 py-12 text-center text-muted"
                   >
                     No events recorded yet. Send some queries through the chat
@@ -545,6 +546,15 @@ export default function DashboardPage() {
                       <ConfidenceBadge
                         confidence={ev.hallucination_confidence}
                       />
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {ev.retrieval_broadened ? (
+                        <span className="inline-flex px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-400 text-[10px] font-medium">
+                          Yes
+                        </span>
+                      ) : (
+                        <span className="text-muted text-xs">-</span>
+                      )}
                     </td>
                   </tr>
                 ))

@@ -180,7 +180,7 @@ async def chat(
             "timings_ms": timings,
             "hallucination_confidence": "high",
             "estimated_cost_usd": 0.0,
-        }))
+        }, user_uid))
         return {
             "answer": unsafe_answer,
             "sources": [],
@@ -212,7 +212,7 @@ async def chat(
             "timings_ms": timings,
             "hallucination_confidence": "high",
             "estimated_cost_usd": 0.0,
-        }))
+        }, user_uid))
         return {
             "answer": ood_answer,
             "sources": [],
@@ -243,7 +243,7 @@ async def chat(
             "timings_ms": timings,
             "hallucination_confidence": "high",
             "estimated_cost_usd": 0.0,
-        }))
+        }, user_uid))
         return cached
 
     # STEP 2B — Semantic cache check
@@ -270,7 +270,7 @@ async def chat(
             "timings_ms": timings,
             "hallucination_confidence": "high",
             "estimated_cost_usd": 0.0,
-        }))
+        }, user_uid))
         return semantic_match
 
     # STEP 3 — Embedding already computed in STEP 2B
@@ -316,10 +316,10 @@ async def chat(
         # STEP 4.5 — Confidence-gated broadened retry (bounded to ONE
         # extra pass, never loops further)
         if reranker_svc.is_retrieval_weak(context_chunks):
-            logger.info(
-                "[RETRIEVAL] Weak initial retrieval (top score=%.3f) — "
-                "broadening search once",
-                context_chunks[0].get("score", 0.0) if context_chunks else 0.0,
+            print(
+                f"[RETRIEVAL] Weak initial retrieval (top score="
+                f"{context_chunks[0].get('score', 0.0) if context_chunks else 0.0:.3f}) — "
+                "broadening search once"
             )
             t0 = time.perf_counter()
             fused_broad = hybrid_search_svc.search_broadened(
@@ -344,14 +344,12 @@ async def chat(
             ):
                 context_chunks = broadened_reranked
                 retrieval_broadened = True
-                logger.info(
-                    "[RETRIEVAL] Broadened search improved top score to %.3f",
-                    context_chunks[0]["score"],
+                print(
+                    f"[RETRIEVAL] Broadened search improved top score to {context_chunks[0]['score']:.3f}"
                 )
             else:
-                logger.info(
-                    "[RETRIEVAL] Broadened search did not improve results — "
-                    "keeping original"
+                print(
+                    "[RETRIEVAL] Broadened search did not improve results — keeping original"
                 )
 
         _retrieval_debug = {
@@ -467,7 +465,7 @@ async def chat(
             output_tokens=len(result.get("answer", "")) // 4,
         ),
         "retrieval_broadened": retrieval_broadened,
-    }))
+    }, user_uid))
 
     # STEP 7 — Return response
     return {

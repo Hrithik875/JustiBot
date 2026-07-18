@@ -19,7 +19,7 @@ observability_svc = ObservabilityService(redis)
 @router.get("/observability/stats")
 async def get_stats(token: dict = Depends(verify_firebase_token)):
     """Returns aggregated pipeline performance stats."""
-    stats = await observability_svc.get_aggregated_stats()
+    stats = await observability_svc.get_aggregated_stats(token["uid"])
     return stats
 
 
@@ -29,5 +29,5 @@ async def get_recent(
     token: dict = Depends(verify_firebase_token),
 ):
     """Returns the N most recent pipeline events for a timeline view."""
-    events = await observability_svc.get_recent_events(limit)
+    events = await observability_svc.get_recent_events(token["uid"], limit)
     return {"events": events, "count": len(events)}
