@@ -7,6 +7,8 @@ and 2-tier LLM routing.
 import asyncio
 import logging
 import re
+import time
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, field_validator
@@ -23,6 +25,7 @@ from backend.services.hybrid_search_service import HybridSearchService
 from backend.services.reranker_service import RerankerService
 from backend.services.query_classifier_service import QueryClassifierService
 from backend.services.hallucination_checker_service import HallucinationCheckerService
+from backend.services.observability_service import ObservabilityService, estimate_cost
 
 router = APIRouter()
 logger = logging.getLogger(__name__)
@@ -44,6 +47,9 @@ query_classifier_svc = QueryClassifierService(groq_svc.client)
 
 # Hallucination checker — pure text analysis, no model loading
 hallucination_checker_svc = HallucinationCheckerService()
+
+# Observability — records per-request pipeline timings to Redis
+observability_svc = ObservabilityService(redis)
 
 MIN_ANSWER_LENGTH = 100
 # ── Utilities ─────────────────────────────────────────────────────────────────
@@ -113,12 +119,17 @@ async def chat(
     # on consecutive requests (free tier behavior with 70b model)
     await asyncio.sleep(4)
 
+    # ── Observability: timing collector ──────────────────────────────────────
+    timings: dict[str, float] = {}
+
     # STEP 1 — Validate and sanitize input
     clean_query = validate_query(request.query)
     user_uid = token["uid"]
 
     # STEP 1.5 — Classify query and route
+    t0 = time.perf_counter()
     classification = await query_classifier_svc.classify(clean_query)
+    timings["classification"] = (time.perf_counter() - t0) * 1000
     category = classification["category"]
 
     async def _persist_chat(answer_text: str, sources_list: list, model_name: str, is_cached: bool):
@@ -158,6 +169,17 @@ async def chat(
             "the National Legal Services Authority helpline at `15100`."
         )
         await _persist_chat(unsafe_answer, [], "safety-filter", False)
+        timings["total"] = sum(timings.values())
+        asyncio.create_task(observability_svc.record_event({
+            "timestamp": datetime.utcnow().isoformat(),
+            "query_category": "UNSAFE",
+            "model_used": "safety-filter",
+            "cache_hit": False,
+            "cache_type": None,
+            "timings_ms": timings,
+            "hallucination_confidence": "high",
+            "estimated_cost_usd": 0.0,
+        }))
         return {
             "answer": unsafe_answer,
             "sources": [],
@@ -179,6 +201,17 @@ async def chat(
             "acts and sections — I'm happy to help."
         )
         await _persist_chat(ood_answer, [], "domain-filter", False)
+        timings["total"] = sum(timings.values())
+        asyncio.create_task(observability_svc.record_event({
+            "timestamp": datetime.utcnow().isoformat(),
+            "query_category": "OUT_OF_DOMAIN",
+            "model_used": "domain-filter",
+            "cache_hit": False,
+            "cache_type": None,
+            "timings_ms": timings,
+            "hallucination_confidence": "high",
+            "estimated_cost_usd": 0.0,
+        }))
         return {
             "answer": ood_answer,
             "sources": [],
@@ -199,11 +232,25 @@ async def chat(
         cached["user_uid"] = user_uid
         cached.setdefault("query_category", category)
         await _persist_chat(cached["answer"], cached.get("sources", []), cached.get("model", "unknown"), True)
+        timings["total"] = sum(timings.values())
+        asyncio.create_task(observability_svc.record_event({
+            "timestamp": datetime.utcnow().isoformat(),
+            "query_category": category,
+            "model_used": cached.get("model", "unknown"),
+            "cache_hit": True,
+            "cache_type": "exact",
+            "timings_ms": timings,
+            "hallucination_confidence": "high",
+            "estimated_cost_usd": 0.0,
+        }))
         return cached
 
     # STEP 2B — Semantic cache check
     # Also produces the embedding reused in STEP 4
+    t0 = time.perf_counter()
     query_embedding = embedder.embed_query(clean_query)
+    timings["embedding"] = (time.perf_counter() - t0) * 1000
+
     semantic_match = await redis.find_semantic_match(query_embedding)
     if semantic_match:
         semantic_match["cached"] = True
@@ -212,6 +259,17 @@ async def chat(
         semantic_match["user_uid"] = user_uid
         semantic_match.setdefault("query_category", category)
         await _persist_chat(semantic_match["answer"], semantic_match.get("sources", []), semantic_match.get("model", "unknown"), True)
+        timings["total"] = sum(timings.values())
+        asyncio.create_task(observability_svc.record_event({
+            "timestamp": datetime.utcnow().isoformat(),
+            "query_category": category,
+            "model_used": semantic_match.get("model", "unknown"),
+            "cache_hit": True,
+            "cache_type": "semantic",
+            "timings_ms": timings,
+            "hallucination_confidence": "high",
+            "estimated_cost_usd": 0.0,
+        }))
         return semantic_match
 
     # STEP 3 — Embedding already computed in STEP 2B
@@ -228,21 +286,27 @@ async def chat(
             "skipped": "GREETING category",
         }
     else:
+        t0 = time.perf_counter()
         fused_candidates = hybrid_search_svc.search(
             query=clean_query,
             query_embedding=query_embedding,
             category_filter=request.category_filter,
             limit=30,
         )
+        timings["hybrid_search"] = (time.perf_counter() - t0) * 1000
+
         _dense_count = sum(1 for c in fused_candidates if c["dense_rank"] is not None)
         _sparse_count = sum(1 for c in fused_candidates if c["sparse_rank"] is not None)
         _fused_count = len(fused_candidates)
 
+        t0 = time.perf_counter()
         context_chunks = reranker_svc.rerank(
             query=clean_query,
             candidates=fused_candidates,
             top_k=5,
         )
+        timings["reranking"] = (time.perf_counter() - t0) * 1000
+
         # Map rerank_score → score so groq_svc.generate() (which sorts by "score")
         # continues to work without modification.
         for chunk in context_chunks:
@@ -256,6 +320,7 @@ async def chat(
         }
 
     # STEP 5 — Generate response (routed by query category)
+    t0 = time.perf_counter()
     if category == "GREETING":
         result = await groq_svc.generate_simple(
             query=clean_query,
@@ -272,10 +337,12 @@ async def chat(
             context_chunks=context_chunks,
             conversation_history=request.conversation_history,
         )
+    timings["generation"] = (time.perf_counter() - t0) * 1000
 
     # STEP 5.5 — Hallucination check
     # Only meaningful for answers grounded in retrieved legal context.
     # Greetings, safety blocks, and domain redirects skip this.
+    t0 = time.perf_counter()
     if category in ("LEGAL_SIMPLE", "LEGAL_COMPLEX"):
         hallucination_check = hallucination_checker_svc.check(
             answer=result["answer"],
@@ -290,6 +357,7 @@ async def chat(
             "citations_found": [],
             "citations_ungrounded": [],
         }
+    timings["hallucination_check"] = (time.perf_counter() - t0) * 1000
 
     # Apply response link formatting
     formatted_answer = format_response_links(result["answer"])
@@ -338,6 +406,23 @@ async def chat(
 
     # STEP 6.5 — Persist to Firestore (non-fatal)
     await _persist_chat(formatted_answer, result["sources"], result["model"], False)
+
+    # ── Observability: record pipeline event (fire-and-forget) ────────────
+    timings["total"] = sum(timings.values())
+    asyncio.create_task(observability_svc.record_event({
+        "timestamp": datetime.utcnow().isoformat(),
+        "query_category": category,
+        "model_used": result.get("model", "n/a"),
+        "cache_hit": False,
+        "cache_type": None,
+        "timings_ms": timings,
+        "hallucination_confidence": hallucination_check["confidence"],
+        "estimated_cost_usd": estimate_cost(
+            result.get("model", ""),
+            input_tokens=len(clean_query) // 4,
+            output_tokens=len(result.get("answer", "")) // 4,
+        ),
+    }))
 
     # STEP 7 — Return response
     return {

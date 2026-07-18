@@ -51,7 +51,9 @@ class RerankerService:
         if not candidates:
             return []
 
-        pairs = [(query, candidate["text"]) for candidate in candidates]
+        # Truncate text to 400 chars to dramatically speed up CPU inference.
+        # The first 400 chars are usually sufficient for the cross-encoder to judge relevance.
+        pairs = [(query, candidate["text"][:400]) for candidate in candidates]
 
         scores = self.model.predict(pairs)
 

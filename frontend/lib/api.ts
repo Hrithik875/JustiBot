@@ -137,3 +137,19 @@ export async function updateSessionTitle(
   })
   if (!res.ok) throw new Error(`HTTP ${res.status}`)
 }
+
+// ── Observability ─────────────────────────────────────────────────────────────
+
+export async function getObservabilityStats(): Promise<Record<string, unknown>> {
+  const res = await fetchWithAuth('/observability/stats')
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.json()
+}
+
+export async function getRecentEvents(
+  limit = 50
+): Promise<{ events: Record<string, unknown>[]; count: number }> {
+  const res = await fetchWithAuth(`/observability/recent?limit=${limit}`)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return res.json()
+}
