@@ -63,6 +63,7 @@ export async function sendMessage(params: {
     contextChunksUsed: data.context_chunks_used,
     cached: data.cached,
     semanticCache: data.semantic_cache,
+    retrievalBroadened: data.retrieval_broadened,
     sessionId: data.session_id,
     userUid: data.user_uid,
   }

@@ -196,6 +196,11 @@ export function MessageBubble({ message }: MessageBubbleProps) {
               ⚡ Cached
             </span>
           )}
+          {message.retrievalBroadened && (
+            <span className="text-xs px-1.5 py-0.5 rounded border border-border text-muted">
+              🔍 Broadened search
+            </span>
+          )}
         </div>
       </div>
     </div>
