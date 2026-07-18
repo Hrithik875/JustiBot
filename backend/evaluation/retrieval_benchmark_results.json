@@ -1,0 +1,363 @@
+{
+  "n_test_cases": 17,
+  "summary": {
+    "Dense only": {
+      "avg_recall_at_5": 0.385,
+      "avg_latency_ms": 199.7
+    },
+    "BM25 only": {
+      "avg_recall_at_5": 0.357,
+      "avg_latency_ms": 32.9
+    },
+    "Hybrid (RRF)": {
+      "avg_recall_at_5": 0.456,
+      "avg_latency_ms": 201.2
+    },
+    "Hybrid + Reranker": {
+      "avg_recall_at_5": 0.447,
+      "avg_latency_ms": 1106.2
+    }
+  },
+  "per_case": [
+    {
+      "id": "tc_001",
+      "query": "What is the national cyber crime helpline number?",
+      "dense_only": {
+        "recall": 0.5,
+        "latency_ms": 159.5
+      },
+      "bm25_only": {
+        "recall": 0.6,
+        "latency_ms": 26.6
+      },
+      "hybrid": {
+        "recall": 0.6,
+        "latency_ms": 181.6
+      },
+      "hybrid_reranker": {
+        "recall": 0.5,
+        "latency_ms": 1163.4
+      }
+    },
+    {
+      "id": "tc_002",
+      "query": "What punishment does the IT Act prescribe for hacking?",
+      "dense_only": {
+        "recall": 0.5,
+        "latency_ms": 176.9
+      },
+      "bm25_only": {
+        "recall": 0.056,
+        "latency_ms": 28.3
+      },
+      "hybrid": {
+        "recall": 0.5,
+        "latency_ms": 188.4
+      },
+      "hybrid_reranker": {
+        "recall": 0.556,
+        "latency_ms": 711.9
+      }
+    },
+    {
+      "id": "tc_003",
+      "query": "What does Section 67 of the IT Act say about publishing obscene content online?",
+      "dense_only": {
+        "recall": 0.682,
+        "latency_ms": 158.8
+      },
+      "bm25_only": {
+        "recall": 0.682,
+        "latency_ms": 34.7
+      },
+      "hybrid": {
+        "recall": 0.682,
+        "latency_ms": 204.3
+      },
+      "hybrid_reranker": {
+        "recall": 0.682,
+        "latency_ms": 1667.0
+      }
+    },
+    {
+      "id": "tc_004",
+      "query": "What is the punishment for murder under the Bharatiya Nyaya Sanhita?",
+      "dense_only": {
+        "recall": 0.667,
+        "latency_ms": 159.9
+      },
+      "bm25_only": {
+        "recall": 0.667,
+        "latency_ms": 38.3
+      },
+      "hybrid": {
+        "recall": 0.667,
+        "latency_ms": 199.4
+      },
+      "hybrid_reranker": {
+        "recall": 0.833,
+        "latency_ms": 1123.7
+      }
+    },
+    {
+      "id": "tc_005",
+      "query": "What is the offence of sedition under the BNS 2023?",
+      "dense_only": {
+        "recall": 0.263,
+        "latency_ms": 156.1
+      },
+      "bm25_only": {
+        "recall": 0.263,
+        "latency_ms": 29.3
+      },
+      "hybrid": {
+        "recall": 0.368,
+        "latency_ms": 192.2
+      },
+      "hybrid_reranker": {
+        "recall": 0.421,
+        "latency_ms": 1385.5
+      }
+    },
+    {
+      "id": "tc_006",
+      "query": "What is the maximum period a person can be detained in police custody under BNSS?",
+      "dense_only": {
+        "recall": 0.278,
+        "latency_ms": 158.0
+      },
+      "bm25_only": {
+        "recall": 0.222,
+        "latency_ms": 46.3
+      },
+      "hybrid": {
+        "recall": 0.389,
+        "latency_ms": 217.7
+      },
+      "hybrid_reranker": {
+        "recall": 0.278,
+        "latency_ms": 880.3
+      }
+    },
+    {
+      "id": "tc_007",
+      "query": "What are the rights of an arrested person under BNSS?",
+      "dense_only": {
+        "recall": 0.364,
+        "latency_ms": 158.1
+      },
+      "bm25_only": {
+        "recall": 0.273,
+        "latency_ms": 37.4
+      },
+      "hybrid": {
+        "recall": 0.409,
+        "latency_ms": 219.1
+      },
+      "hybrid_reranker": {
+        "recall": 0.409,
+        "latency_ms": 858.6
+      }
+    },
+    {
+      "id": "tc_008",
+      "query": "What does Article 21 of the Constitution guarantee?",
+      "dense_only": {
+        "recall": 0.357,
+        "latency_ms": 155.4
+      },
+      "bm25_only": {
+        "recall": 0.286,
+        "latency_ms": 22.5
+      },
+      "hybrid": {
+        "recall": 0.357,
+        "latency_ms": 180.2
+      },
+      "hybrid_reranker": {
+        "recall": 0.429,
+        "latency_ms": 923.3
+      }
+    },
+    {
+      "id": "tc_009",
+      "query": "What fundamental rights does the Constitution give to Indian citizens?",
+      "dense_only": {
+        "recall": 0.44,
+        "latency_ms": 157.0
+      },
+      "bm25_only": {
+        "recall": 0.4,
+        "latency_ms": 44.6
+      },
+      "hybrid": {
+        "recall": 0.44,
+        "latency_ms": 263.2
+      },
+      "hybrid_reranker": {
+        "recall": 0.56,
+        "latency_ms": 909.3
+      }
+    },
+    {
+      "id": "tc_010",
+      "query": "How do I file an RTI application and what is the fee?",
+      "dense_only": {
+        "recall": 0.4,
+        "latency_ms": 179.1
+      },
+      "bm25_only": {
+        "recall": 0.2,
+        "latency_ms": 32.5
+      },
+      "hybrid": {
+        "recall": 0.55,
+        "latency_ms": 198.1
+      },
+      "hybrid_reranker": {
+        "recall": 0.5,
+        "latency_ms": 1112.1
+      }
+    },
+    {
+      "id": "tc_011",
+      "query": "What information is exempt from disclosure under the RTI Act?",
+      "dense_only": {
+        "recall": 0.636,
+        "latency_ms": 800.9
+      },
+      "bm25_only": {
+        "recall": 0.636,
+        "latency_ms": 28.7
+      },
+      "hybrid": {
+        "recall": 0.773,
+        "latency_ms": 186.8
+      },
+      "hybrid_reranker": {
+        "recall": 0.409,
+        "latency_ms": 725.1
+      }
+    },
+    {
+      "id": "tc_012",
+      "query": "What is the consumer helpline number in India?",
+      "dense_only": {
+        "recall": 0.364,
+        "latency_ms": 158.5
+      },
+      "bm25_only": {
+        "recall": 0.364,
+        "latency_ms": 28.6
+      },
+      "hybrid": {
+        "recall": 0.455,
+        "latency_ms": 187.1
+      },
+      "hybrid_reranker": {
+        "recall": 0.455,
+        "latency_ms": 1393.9
+      }
+    },
+    {
+      "id": "tc_013",
+      "query": "How do I file a consumer complaint under the Consumer Protection Act 2019?",
+      "dense_only": {
+        "recall": 0.591,
+        "latency_ms": 191.5
+      },
+      "bm25_only": {
+        "recall": 0.591,
+        "latency_ms": 42.4
+      },
+      "hybrid": {
+        "recall": 0.591,
+        "latency_ms": 214.9
+      },
+      "hybrid_reranker": {
+        "recall": 0.591,
+        "latency_ms": 988.1
+      }
+    },
+    {
+      "id": "tc_014",
+      "query": "What is the women helpline number and the police emergency number in India?",
+      "dense_only": {
+        "recall": 0.286,
+        "latency_ms": 156.5
+      },
+      "bm25_only": {
+        "recall": 0.429,
+        "latency_ms": 34.0
+      },
+      "hybrid": {
+        "recall": 0.571,
+        "latency_ms": 203.8
+      },
+      "hybrid_reranker": {
+        "recall": 0.571,
+        "latency_ms": 1227.6
+      }
+    },
+    {
+      "id": "tc_015",
+      "query": "How is property distributed under Hindu succession law in India?",
+      "dense_only": {
+        "recall": 0.091,
+        "latency_ms": 156.3
+      },
+      "bm25_only": {
+        "recall": 0.045,
+        "latency_ms": 26.4
+      },
+      "hybrid": {
+        "recall": 0.045,
+        "latency_ms": 194.0
+      },
+      "hybrid_reranker": {
+        "recall": 0.091,
+        "latency_ms": 713.0
+      }
+    },
+    {
+      "id": "tc_016",
+      "query": "How do I apply for a patent in India?",
+      "dense_only": {
+        "recall": 0.042,
+        "latency_ms": 155.5
+      },
+      "bm25_only": {
+        "recall": 0.083,
+        "latency_ms": 25.5
+      },
+      "hybrid": {
+        "recall": 0.042,
+        "latency_ms": 196.3
+      },
+      "hybrid_reranker": {
+        "recall": 0.042,
+        "latency_ms": 1574.3
+      }
+    },
+    {
+      "id": "tc_017",
+      "query": "What are the grounds for divorce under Indian family law?",
+      "dense_only": {
+        "recall": 0.077,
+        "latency_ms": 157.4
+      },
+      "bm25_only": {
+        "recall": 0.269,
+        "latency_ms": 32.9
+      },
+      "hybrid": {
+        "recall": 0.308,
+        "latency_ms": 193.8
+      },
+      "hybrid_reranker": {
+        "recall": 0.269,
+        "latency_ms": 1448.1
+      }
+    }
+  ]
+}

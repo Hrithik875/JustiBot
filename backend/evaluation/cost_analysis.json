@@ -1,0 +1,22 @@
+{
+  "n_events": 38,
+  "scenarios": {
+    "naive": {
+      "cost_usd": 0.00462
+    },
+    "routing_only": {
+      "cost_usd": 0.003217,
+      "savings_pct": 30.4
+    },
+    "routing_and_caching": {
+      "cost_usd": 0.002709,
+      "savings_pct": 41.4
+    }
+  },
+  "stats_used": {
+    "total_llm_queries": 28,
+    "fast_model_queries": 17,
+    "quality_model_queries": 11,
+    "cache_hit_ratio": 0.1579
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "n_events": 38,
+  "total_avg_latency_ms": 4113.1,
+  "breakdown": [
+    {
+      "stage": "classification",
+      "avg_ms": 232.2,
+      "pct_total": 5.6
+    },
+    {
+      "stage": "embedding",
+      "avg_ms": 35.5,
+      "pct_total": 0.9
+    },
+    {
+      "stage": "hybrid_search",
+      "avg_ms": 434.9,
+      "pct_total": 10.6
+    },
+    {
+      "stage": "reranking",
+      "avg_ms": 840.1,
+      "pct_total": 20.4
+    },
+    {
+      "stage": "generation",
+      "avg_ms": 1546.5,
+      "pct_total": 37.6
+    },
+    {
+      "stage": "hallucination_check",
+      "avg_ms": 1.3,
+      "pct_total": 0.0
+    },
+    {
+      "stage": "total",
+      "avg_ms": 4113.1,
+      "pct_total": 100.0
+    },
+    {
+      "stage": "broadened_retry",
+      "avg_ms": 1022.7,
+      "pct_total": 24.9
+    }
+  ]
+}
