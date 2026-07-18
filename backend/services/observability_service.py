@@ -162,9 +162,9 @@ class ObservabilityService:
                     latency_sums[stage] += ms
                     latency_counts[stage] += 1
         avg_latency = {
-            stage: round(latency_sums[stage] / latency_counts[stage], 2)
+            stage: round(latency_sums[stage] / total, 2)
             for stage in latency_sums
-            if latency_counts[stage] > 0
+            if total > 0
         }
 
         # Category breakdown
