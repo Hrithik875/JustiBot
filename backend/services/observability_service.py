@@ -51,7 +51,7 @@ class ObservabilityService:
 
     # ── Write ─────────────────────────────────────────────────────────────
 
-    async def record_event(self, event: dict) -> None:
+    async def record_event(self, event: dict, user_uid: str) -> None:
         """
         Append a pipeline event to the Redis list.
 
@@ -71,17 +71,19 @@ class ObservabilityService:
         """
         try:
             payload = json.dumps(event)
-            self.redis.client.lpush(self.METRICS_KEY, payload)
-            self.redis.client.ltrim(self.METRICS_KEY, 0, self.MAX_EVENTS - 1)
+            key = f"{self.METRICS_KEY}:{user_uid}"
+            self.redis.client.lpush(key, payload)
+            self.redis.client.ltrim(key, 0, self.MAX_EVENTS - 1)
         except Exception as exc:
             logger.error("[OBSERVABILITY] Failed to record event: %s", exc)
 
     # ── Read ──────────────────────────────────────────────────────────────
 
-    async def get_recent_events(self, limit: int = 100) -> list[dict]:
+    async def get_recent_events(self, user_uid: str, limit: int = 100) -> list[dict]:
         """Fetch the most recent *limit* events from the Redis list."""
         try:
-            raw_items = self.redis.client.lrange(self.METRICS_KEY, 0, limit - 1)
+            key = f"{self.METRICS_KEY}:{user_uid}"
+            raw_items = self.redis.client.lrange(key, 0, limit - 1)
             events = []
             for raw in raw_items:
                 try:
@@ -95,7 +97,7 @@ class ObservabilityService:
 
     # ── Aggregation ───────────────────────────────────────────────────────
 
-    async def get_aggregated_stats(self) -> dict:
+    async def get_aggregated_stats(self, user_uid: str) -> dict:
         """
         Compute aggregate statistics over all stored events.
 
@@ -113,9 +115,8 @@ class ObservabilityService:
         }
         """
         try:
-            raw_items = self.redis.client.lrange(
-                self.METRICS_KEY, 0, self.MAX_EVENTS - 1
-            )
+            key = f"{self.METRICS_KEY}:{user_uid}"
+            raw_items = self.redis.client.lrange(key, 0, self.MAX_EVENTS - 1)
         except Exception as exc:
             logger.error("[OBSERVABILITY] Failed to fetch events for aggregation: %s", exc)
             raw_items = []

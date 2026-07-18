@@ -5,6 +5,7 @@ export interface Message {
   sources: Source[]
   cached: boolean
   semanticCache?: boolean
+  retrievalBroadened?: boolean
   model?: string
   createdAt: string
 }
@@ -31,6 +32,7 @@ export interface ChatResponse {
   contextChunksUsed: number
   cached: boolean
   semanticCache?: boolean
+  retrievalBroadened?: boolean
   sessionId: string
   userUid: string
 }

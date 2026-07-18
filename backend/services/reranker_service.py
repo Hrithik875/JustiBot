@@ -71,5 +71,44 @@ class RerankerService:
         result = scored[:top_k]
 
         print(f"[RERANK] {len(candidates)} candidates -> top {top_k}")
+        
+        for i, candidate in enumerate(result[:3]):
+            print(f"[RERANK-DEBUG] #{i}: raw_score={candidate.get('rerank_score')}, "
+                  f"normalized_score={candidate.get('score')}, "
+                  f"text_preview={candidate.get('text', '')[:80]}")
 
         return result
+
+    def is_retrieval_weak(
+        self,
+        reranked_results: list[dict],
+        min_gap_ratio: float = 1.5,
+    ) -> bool:
+        """
+        Weak if the top result isn't meaningfully better than the
+        bottom of the reranked set. Uses relative score separation
+        instead of an absolute threshold, since the cross-encoder
+        (trained on MS MARCO, not legal text) produces uncalibrated
+        absolute scores on this domain — but relative ranking signal
+        remains meaningful.
+        """
+        if len(reranked_results) < 2:
+            return True
+            
+        scores = [r.get("rerank_score", r.get("score", 0.0)) for r in reranked_results]
+        top_score = scores[0]
+        bottom_score = scores[-1]
+
+        # If everything scores roughly the same, the reranker isn't
+        # distinguishing relevant from irrelevant — that's weak signal
+        spread = top_score - bottom_score
+        avg_score = sum(scores) / len(scores)
+
+        # Weak if there's very little separation between best and worst,
+        # OR if the top score isn't meaningfully above the average
+        if spread < 0.02:  # near-flat distribution = no real signal
+            return True
+        if avg_score > 0 and (top_score / max(avg_score, 1e-6)) < min_gap_ratio:
+            return True
+
+        return False

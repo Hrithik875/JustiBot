@@ -129,6 +129,7 @@ export function useChat(sessionId: string): UseChatReturn {
             sources: response.sources,
             cached: response.cached,
             semanticCache: response.semanticCache,
+            retrievalBroadened: response.retrievalBroadened,
             model: response.model,
             createdAt: new Date().toISOString(),
           }

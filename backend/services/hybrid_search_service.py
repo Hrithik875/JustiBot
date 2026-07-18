@@ -162,3 +162,24 @@ class HybridSearchService:
         )
 
         return fused_results
+
+    def search_broadened(
+        self,
+        query: str,
+        query_embedding: list[float],
+        limit: int = 50,
+    ) -> list[dict]:
+        """
+        Fallback search used ONLY when the initial category-filtered
+        search returns weak results. Differences from search():
+        - No category_filter (search the ENTIRE corpus, not just the
+          originally matched category)
+        - Higher limit (50 instead of 30) to cast a wider net
+        - Everything else (RRF fusion logic) identical to search()
+        """
+        return self.search(
+            query=query,
+            query_embedding=query_embedding,
+            category_filter=None,
+            limit=limit,
+        )
